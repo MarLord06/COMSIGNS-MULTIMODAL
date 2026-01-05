@@ -1,0 +1,62 @@
+# Configuración del sistema COMSIGNS
+
+# Ingestion
+ingestion:
+  video_dir: "data/raw/videos"
+  manifest_dir: "data/raw/manifests"
+  max_duration: 60  # segundos
+  supported_formats: ["mp4", "avi", "mov", "mkv"]
+  fps: 30
+
+# Preprocessing
+preprocessing:
+  output_dir: "data/features"
+  fps: 30
+  mediapipe:
+    min_detection_confidence: 0.5
+    min_tracking_confidence: 0.5
+    static_image_mode: false
+  normalization:
+    enabled: true
+    method: "relative"  # relative, absolute
+
+# Feature Store
+feature_store:
+  storage_path: "data/features"
+  format: "parquet"  # parquet, json
+  versioning: true
+
+# Encoder
+encoder:
+  model_path: "models/encoder"
+  hidden_dim: 256
+  output_dim: 512
+  num_layers: 2
+  dropout: 0.1
+
+# Glosador
+glosador:
+  model_path: "models/glosador"
+  vocab_size: 1000
+  hidden_dim: 256
+  num_layers: 3
+
+# Translator
+translator:
+  model_name: "google/mt5-small"
+  max_length: 128
+
+# API
+api:
+  host: "0.0.0.0"
+  port: 8000
+  workers: 1
+  max_upload_size: 100  # MB
+  timeout: 300  # segundos
+
+# Logging
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/comsigns.log"
+

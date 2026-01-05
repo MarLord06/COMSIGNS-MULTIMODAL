@@ -1,0 +1,17 @@
+comsigns/
+├─ infra/
+├─ data/
+│  ├─ raw/
+│  ├─ processed/
+│  ├─ features/
+├─ services/
+│  ├─ ingestion/
+│  ├─ preprocessing/
+│  ├─ feature-store/
+│  ├─ encoder/
+│  ├─ glosador/
+│  ├─ translator/
+│  └─ api/
+├─ web/
+├─ experiments/
+└─ notebooks/

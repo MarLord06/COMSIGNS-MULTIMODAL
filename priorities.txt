@@ -1,0 +1,11 @@
+PRIMERA PRIORIDAD: que los módulos de ingestion y preprocessing sean completamente funcionales.
+Código para capturar video y convertirlo a frames.
+MediaPipe funcionando para generar JSON de keypoints.
+Validación de features según esquema.
+SEGUNDA PRIORIDAD: armar un encoder mínimo funcional (multimodal).
+Tres ramas (mano, cuerpo, rostro).
+Fusión de embeddings.
+Entrenamiento sobre datos sintéticos o dataset mínimo.
+TERCERA PRIORIDAD: glosador sencillo con CTC o Transformer pequeño.
+CUARTA PRIORIDAD: integrarlo en API de inferencia.
+QUINTA PRIORIDAD: UI básica para pruebas.

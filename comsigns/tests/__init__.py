@@ -1,0 +1,4 @@
+"""
+Tests para COMSIGNS
+"""
+
