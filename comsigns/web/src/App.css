@@ -1,56 +1,378 @@
+/* MINIMALIST ELEGANT DASHBOARD */
+
 .app {
   width: 100%;
-  max-width: 1200px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header - Clean & Refined */
+.app-header {
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  backdrop-filter: blur(40px) saturate(150%);
+  -webkit-backdrop-filter: blur(40px) saturate(150%);
+}
+
+.header-content {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: var(--space-lg) var(--space-xl);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-lg);
+}
+
+.logo-section {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  animation: fadeIn 0.6s var(--transition-base);
+}
+
+.logo-icon {
+  font-size: 2.5rem;
+  opacity: 0.9;
+  transition: all var(--transition-base);
+}
+
+.logo-icon:hover {
+  opacity: 1;
+  transform: scale(1.05);
+}
+
+.logo-section h1 {
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.logo-section p {
+  font-size: clamp(0.875rem, 1.5vw, 0.95rem);
+  color: var(--color-text-tertiary);
+  font-weight: 500;
+}
+
+/* Mode Toggle - Minimal & Elegant */
+.mode-toggle {
+  display: flex;
+  gap: var(--space-xs);
+  background: var(--color-surface-elevated);
+  padding: 0.25rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+}
+
+.mode-btn {
+  padding: 0.75rem 1.5rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-base);
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  letter-spacing: -0.01em;
+}
+
+.btn-icon {
+  font-size: 1.125rem;
+  opacity: 0.8;
+}
+
+.mode-btn:hover {
+  color: var(--color-text-primary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.mode-btn.active {
+  background: var(--color-accent);
+  color: var(--color-bg);
+  box-shadow: var(--shadow-sm);
+}
+
+.mode-btn.active .btn-icon {
+  opacity: 1;
+}
+
+/* Dashboard - Spacious Layout */
+.dashboard {
+  flex: 1;
+  max-width: 1600px;
+  width: 100%;
+  margin: 0 auto;
+  padding: var(--space-xl);
+}
+
+/* Two Column Grid */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: var(--space-lg);
+  min-height: calc(100vh - 200px);
+}
+
+.dashboard-left,
+.dashboard-right {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Section Cards - Minimal Glass */
+.section-card {
+  background: rgba(255, 255, 255, 0.02);
+  backdrop-filter: blur(40px) saturate(150%);
+  border-radius: var(--radius-xl);
+  padding: var(--space-xl);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-lg);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  transition: all var(--transition-base);
+  animation: scaleIn 0.6s var(--transition-base);
+}
+
+.section-card:hover {
+  border-color: var(--color-border-hover);
+  box-shadow: var(--shadow-xl);
+}
+
+.section-card.full-width {
+  grid-column: 1 / -1;
+}
+
+.section-header {
+  margin-bottom: var(--space-lg);
+  padding-bottom: var(--space-md);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.section-header h2 {
+  font-size: clamp(1.25rem, 2vw, 1.5rem);
+  margin-bottom: var(--space-xs);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.section-header p {
+  font-size: 0.875rem;
+  color: var(--color-text-tertiary);
+  font-weight: 400;
+}
+
+/* Empty State - Elegant */
+.empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--space-2xl) var(--space-xl);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.01);
+}
+
+.empty-icon {
+  font-size: 3rem;
+  margin-bottom: var(--space-lg);
+  opacity: 0.4;
+}
+
+.empty-state h3 {
+  font-size: 1.25rem;
+  margin-bottom: var(--space-sm);
+  font-weight: 600;
+}
+
+.empty-state p {
+  color: var(--color-text-tertiary);
+  max-width: 400px;
+  line-height: 1.6;
+  font-size: 0.9375rem;
+}
+
+/* Upload Container */
+.upload-container {
+  max-width: 1000px;
   margin: 0 auto;
 }
 
-.container {
-  background: white;
-  border-radius: 20px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-  overflow: hidden;
+.results-section {
+  margin-top: var(--space-xl);
+  padding-top: var(--space-xl);
+  border-top: 1px solid var(--color-border);
 }
 
-.header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  padding: 40px;
-  text-align: center;
+/* Error Toast - Minimal */
+.error-toast {
+  position: fixed;
+  bottom: var(--space-lg);
+  right: var(--space-lg);
+  background: var(--color-surface-elevated);
+  color: var(--color-text-primary);
+  padding: var(--space-md) var(--space-lg);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  max-width: 400px;
+  animation: slideIn 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  z-index: 2000;
+  border: 1px solid rgba(255, 100, 100, 0.3);
+  backdrop-filter: blur(40px);
 }
 
-.header h1 {
-  font-size: 3rem;
-  margin-bottom: 10px;
-  font-weight: 700;
+.error-icon {
+  font-size: 1.25rem;
 }
 
-.header p {
-  font-size: 1.2rem;
-  opacity: 0.9;
+.close-btn {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  transition: all var(--transition-fast);
+  font-size: 1rem;
+  font-weight: 500;
 }
 
-.main {
-  padding: 40px;
+.close-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--color-border-hover);
+  color: var(--color-text-primary);
 }
 
-.footer {
-  background: #f5f5f5;
-  padding: 20px;
-  text-align: center;
-  color: #666;
-  font-size: 0.9rem;
+/* Footer - Minimal */
+.app-footer {
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+  padding: var(--space-lg) 0;
+  margin-top: auto;
 }
 
-.error-message {
-  background: #fee;
-  border: 1px solid #fcc;
-  border-radius: 8px;
-  padding: 15px;
-  margin: 20px 0;
-  color: #c33;
+.footer-content {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 0 var(--space-xl);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  font-size: 0.875rem;
+  color: var(--color-text-tertiary);
 }
 
-.error-message p {
+.footer-content p {
   margin: 0;
+  font-weight: 500;
 }
 
+.footer-links {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-weight: 400;
+}
+
+.footer-links span:not(:nth-child(2)) {
+  transition: color var(--transition-fast);
+  cursor: default;
+}
+
+.footer-links span:not(:nth-child(2)):hover {
+  color: var(--color-text-secondary);
+}
+
+/* Responsive Design */
+@media (max-width: 1200px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-lg);
+  }
+}
+
+@media (max-width: 768px) {
+  .header-content {
+    flex-direction: column;
+    align-items: stretch;
+    padding: var(--space-md);
+    gap: var(--space-md);
+  }
+
+  .logo-section {
+    justify-content: center;
+    text-align: center;
+  }
+
+  .mode-toggle {
+    width: 100%;
+  }
+
+  .mode-btn {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .dashboard {
+    padding: var(--space-lg) var(--space-md);
+  }
+
+  .section-card {
+    padding: var(--space-lg);
+  }
+
+  .error-toast {
+    left: var(--space-md);
+    right: var(--space-md);
+    max-width: none;
+  }
+
+  .footer-content {
+    flex-direction: column;
+    text-align: center;
+    padding: 0 var(--space-md);
+  }
+}
+
+@media (max-width: 480px) {
+  .logo-icon {
+    font-size: 2rem;
+  }
+
+  .mode-toggle {
+    flex-direction: column;
+  }
+
+  .mode-btn {
+    width: 100%;
+  }
+
+  .empty-icon {
+    font-size: 2.5rem;
+  }
+
+  .section-card {
+    padding: var(--space-md);
+  }
+}
