@@ -18,16 +18,19 @@ import logging
 import sys
 from pathlib import Path
 
+# Agregar el directorio raíz al path (donde está el paquete comsigns)
+SCRIPT_DIR = Path(__file__).parent.resolve()
+COMSIGNS_ROOT = SCRIPT_DIR.parent  # /comsigns
+PROJECT_ROOT = COMSIGNS_ROOT.parent  # /COMSIGNS-MULTIMODAL
+sys.path.insert(0, str(COMSIGNS_ROOT))
+
 import torch
 from torch.utils.data import DataLoader
 
-# Agregar el directorio raíz al path
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from comsigns.core.data.datasets.aec import AECDataset
-from comsigns.core.data.loaders import encoder_collate_fn
-from comsigns.services.encoder import MultimodalEncoder
-from comsigns.training import Trainer, TrainerConfig, SignLanguageClassifier
+from core.data.datasets.aec import AECDataset
+from core.data.loaders import encoder_collate_fn
+from services.encoder import MultimodalEncoder
+from training import Trainer, TrainerConfig, SignLanguageClassifier
 
 # Configurar logging
 logging.basicConfig(
@@ -44,7 +47,7 @@ def parse_args():
     parser.add_argument(
         '--dataset-path',
         type=Path,
-        default=Path('data/raw/lsp_aec'),
+        default=None,  # Se resuelve dinámicamente
         help='Ruta al dataset AEC'
     )
     parser.add_argument(
@@ -89,6 +92,10 @@ def parse_args():
 
 def main():
     args = parse_args()
+    
+    # Resolver path del dataset
+    if args.dataset_path is None:
+        args.dataset_path = PROJECT_ROOT / 'data' / 'raw' / 'lsp_aec'
     
     logger.info("=" * 60)
     logger.info("ComSigns Training")
