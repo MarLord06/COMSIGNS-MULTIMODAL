@@ -7,13 +7,18 @@ MultimodalEncoder pipeline.
 
 Dataset source: Asociación de Estudio del Conocimiento (AEC)
 Location: data/raw/lsp_aec/
+
+IMPORTANT: The AEC dataset contains only two source videos and no valid signer
+information (signer_id is always -1). Any train/val split should use gloss
+stratification for technical pipeline validation, not as a true evaluation
+of model generalization.
 """
 
 import json
 import pickle
 import logging
 from pathlib import Path
-from typing import Optional, Dict, List, Any, Callable
+from typing import Optional, Dict, List, Any, Callable, Literal, Set
 
 import numpy as np
 
@@ -62,7 +67,9 @@ class AECDataset(BaseDataset):
         resolver: Optional[KeypointResolverInterface] = None,
         transform: Optional[Callable[[EncoderReadySample], Any]] = None,
         lazy_load: bool = True,
-        skip_missing: bool = True
+        skip_missing: bool = True,
+        split_file: Optional[Path] = None,
+        split: Optional[Literal["train", "val"]] = None
     ):
         """
         Initialize the AEC dataset.
@@ -77,11 +84,27 @@ class AECDataset(BaseDataset):
             lazy_load: If True, load keypoints on-demand. If False, load all
                        at initialization (memory intensive)
             skip_missing: If True, skip instances with missing .pkl files
+            split_file: Optional path to a JSON file containing split definitions.
+                       The file should have format: {"train": [...], "val": [...]}
+                       where values are lists of unique_name strings.
+            split: Which split to load ("train" or "val"). Required if split_file
+                  is provided. If split_file is None, this is ignored.
+        
+        Note:
+            The AEC dataset contains only two source videos and no valid signer
+            information (signer_id=-1). Split files should use gloss stratification
+            for technical pipeline validation, not as true generalization evaluation.
         """
         self.dataset_root = Path(dataset_root).resolve()
         self.transform = transform
         self.lazy_load = lazy_load
         self.skip_missing = skip_missing
+        self.split_file = Path(split_file) if split_file else None
+        self.split = split
+        
+        # Validate split parameters
+        if self.split_file is not None and self.split is None:
+            raise ValueError("split parameter is required when split_file is provided")
         
         # Setup resolver
         self.resolver = resolver or AECKeypointResolver(self.dataset_root)
@@ -99,9 +122,14 @@ class AECDataset(BaseDataset):
         self._build_vocabulary()
         self._flatten_instances()
         
+        # Apply external split if provided
+        if self.split_file is not None:
+            self._apply_split()
+        
         logger.info(
             f"AECDataset initialized: {len(self)} samples, "
             f"{len(self._gloss_to_id)} glosses"
+            + (f" (split={self.split})" if self.split else "")
         )
     
     def _load_dictionary(self) -> None:
@@ -168,6 +196,52 @@ class AECDataset(BaseDataset):
         
         if missing_count > 0:
             logger.warning(f"Skipped {missing_count} instances with missing keypoint files")
+    
+    def _apply_split(self) -> None:
+        """
+        Filter instances based on external split file.
+        
+        The split file should be a JSON with format:
+        {
+            "train": ["unique_name_1", "unique_name_2", ...],
+            "val": ["unique_name_3", ...]
+        }
+        
+        Only instances whose unique_name appears in the specified split
+        will be kept. The vocabulary is NOT rebuilt - it contains all
+        glosses regardless of split for consistent label encoding.
+        """
+        if self.split_file is None or self.split is None:
+            return
+        
+        if not self.split_file.exists():
+            raise FileNotFoundError(f"Split file not found: {self.split_file}")
+        
+        with open(self.split_file, 'r', encoding='utf-8') as f:
+            split_data = json.load(f)
+        
+        if self.split not in split_data:
+            available = [k for k in split_data.keys() if k != "metadata"]
+            raise ValueError(
+                f"Split '{self.split}' not found in split file. "
+                f"Available splits: {available}"
+            )
+        
+        valid_names: Set[str] = set(split_data[self.split])
+        original_count = len(self._flat_instances)
+        
+        self._flat_instances = [
+            entry for entry in self._flat_instances
+            if entry['instance'].get('unique_name') in valid_names
+        ]
+        
+        # Count glosses in this split
+        glosses_in_split = set(entry['gloss'] for entry in self._flat_instances)
+        
+        logger.info(
+            f"Applied '{self.split}' split: {original_count} → {len(self._flat_instances)} samples "
+            f"({len(glosses_in_split)} glosses)"
+        )
     
     def __len__(self) -> int:
         """Return the total number of samples in the dataset."""

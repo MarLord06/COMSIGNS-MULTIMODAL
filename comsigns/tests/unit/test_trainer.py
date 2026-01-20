@@ -395,9 +395,9 @@ class TestTrainer:
         
         history = trainer.fit(loader)
         
-        assert "loss" in history
+        assert "train_loss" in history
         assert "epoch" in history
-        assert len(history["loss"]) == config.epochs
+        assert len(history["train_loss"]) == config.epochs
         assert trainer.current_epoch == config.epochs
     
     def test_trainer_single_step(self, trainer_setup):
@@ -436,8 +436,8 @@ class TestTrainer:
         history = trainer.fit(loader)
         
         # Loss should decrease significantly
-        initial_loss = history["loss"][0]
-        final_loss = history["loss"][-1]
+        initial_loss = history["train_loss"][0]
+        final_loss = history["train_loss"][-1]
         
         assert final_loss < initial_loss, (
             f"Loss did not decrease in overfit mode: "
@@ -495,8 +495,8 @@ class TestIntegration:
         history = trainer.fit(loader)
         
         # Verify
-        assert len(history["loss"]) == 3
-        assert all(isinstance(l, float) for l in history["loss"])
+        assert len(history["train_loss"]) == 3
+        assert all(isinstance(l, float) for l in history["train_loss"])
         assert trainer.global_step > 0
         
         # Model should be trainable

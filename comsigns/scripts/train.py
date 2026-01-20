@@ -29,6 +29,7 @@ from torch.utils.data import DataLoader
 
 from core.data.datasets.aec import AECDataset
 from core.data.loaders import encoder_collate_fn
+from core.data.splits import create_train_val_split
 from services.encoder import MultimodalEncoder
 from training import Trainer, TrainerConfig, SignLanguageClassifier
 
@@ -81,6 +82,28 @@ def parse_args():
         help='Modo overfit: entrena con un solo batch (para debug)'
     )
     parser.add_argument(
+        '--no-validate',
+        action='store_true',
+        help='Desactivar validación (por defecto está activada)'
+    )
+    parser.add_argument(
+        '--val-ratio',
+        type=float,
+        default=0.2,
+        help='Fracción de datos para validación con random split (default: 0.2)'
+    )
+    parser.add_argument(
+        '--stratified',
+        action='store_true',
+        help='Usar split estratificado pre-generado (data/splits/aec_stratified.json)'
+    )
+    parser.add_argument(
+        '--split-file',
+        type=Path,
+        default=None,
+        help='Ruta a archivo de split personalizado (implica --stratified)'
+    )
+    parser.add_argument(
         '--seed',
         type=int,
         default=42,
@@ -97,6 +120,13 @@ def main():
     if args.dataset_path is None:
         args.dataset_path = PROJECT_ROOT / 'data' / 'raw' / 'lsp_aec'
     
+    # Resolver split file
+    if args.split_file is not None:
+        args.stratified = True  # --split-file implica --stratified
+    
+    if args.stratified and args.split_file is None:
+        args.split_file = PROJECT_ROOT / 'data' / 'splits' / 'aec_stratified.json'
+    
     logger.info("=" * 60)
     logger.info("ComSigns Training")
     logger.info("=" * 60)
@@ -106,25 +136,104 @@ def main():
     # =========================================================================
     logger.info(f"Cargando dataset desde: {args.dataset_path}")
     
-    dataset = AECDataset(args.dataset_path)
-    num_classes = len(dataset.gloss_to_id)
+    validate = not args.no_validate and not args.overfit
+    val_loader = None
     
-    logger.info(f"  Muestras totales: {len(dataset)}")
-    logger.info(f"  Clases (glosas): {num_classes}")
+    if args.stratified and validate:
+        # Usar split estratificado pre-generado
+        logger.info(f"Usando split estratificado: {args.split_file}")
+        
+        if not args.split_file.exists():
+            logger.error(f"Split file no encontrado: {args.split_file}")
+            logger.error("Ejecuta primero: python scripts/generate_aec_split.py")
+            sys.exit(1)
+        
+        train_dataset = AECDataset(
+            args.dataset_path,
+            split_file=args.split_file,
+            split="train"
+        )
+        val_dataset = AECDataset(
+            args.dataset_path,
+            split_file=args.split_file,
+            split="val"
+        )
+        
+        num_classes = len(train_dataset.gloss_to_id)
+        
+        logger.info(f"  Train: {len(train_dataset)} muestras")
+        logger.info(f"  Val: {len(val_dataset)} muestras")
+        logger.info(f"  Clases (glosas): {num_classes}")
+        
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=args.batch_size,
+            shuffle=True,
+            collate_fn=encoder_collate_fn,
+            num_workers=0,
+            pin_memory=args.device == 'cuda'
+        )
+        
+        val_loader = DataLoader(
+            val_dataset,
+            batch_size=args.batch_size,
+            shuffle=False,
+            collate_fn=encoder_collate_fn,
+            num_workers=0,
+            pin_memory=args.device == 'cuda'
+        )
+    else:
+        # Cargar dataset completo
+        dataset = AECDataset(args.dataset_path)
+        num_classes = len(dataset.gloss_to_id)
+        
+        logger.info(f"  Muestras totales: {len(dataset)}")
+        logger.info(f"  Clases (glosas): {num_classes}")
+        
+        # =========================================================================
+        # 2. Crear Train/Val Split (random)
+        # =========================================================================
+        if validate:
+            logger.info(f"Creando split train/val random ({1-args.val_ratio:.0%}/{args.val_ratio:.0%})...")
+            train_set, val_set = create_train_val_split(
+                dataset, 
+                val_ratio=args.val_ratio,
+                seed=args.seed
+            )
+            logger.info(f"  Train: {len(train_set)} muestras")
+            logger.info(f"  Val: {len(val_set)} muestras")
+            
+            train_loader = DataLoader(
+                train_set,
+                batch_size=args.batch_size,
+                shuffle=True,
+                collate_fn=encoder_collate_fn,
+                num_workers=0,
+                pin_memory=args.device == 'cuda'
+            )
+            
+            val_loader = DataLoader(
+                val_set,
+                batch_size=args.batch_size,
+                shuffle=False,
+                collate_fn=encoder_collate_fn,
+                num_workers=0,
+                pin_memory=args.device == 'cuda'
+            )
+        else:
+            logger.info("Validación desactivada - usando todo el dataset para training")
+            train_loader = DataLoader(
+                dataset,
+                batch_size=args.batch_size,
+                shuffle=True,
+                collate_fn=encoder_collate_fn,
+                num_workers=0,
+                pin_memory=args.device == 'cuda'
+            )
     
-    # =========================================================================
-    # 2. Crear DataLoader
-    # =========================================================================
-    train_loader = DataLoader(
-        dataset,
-        batch_size=args.batch_size,
-        shuffle=True,
-        collate_fn=encoder_collate_fn,
-        num_workers=0,  # 0 para evitar problemas en macOS
-        pin_memory=True if args.device == 'cuda' else False
-    )
-    
-    logger.info(f"  Batches por epoch: {len(train_loader)}")
+    logger.info(f"  Batches por epoch (train): {len(train_loader)}")
+    if val_loader:
+        logger.info(f"  Batches por epoch (val): {len(val_loader)}")
     
     # =========================================================================
     # 3. Crear Modelo
@@ -165,7 +274,9 @@ def main():
         log_every_n_steps=10,
         overfit_single_batch=args.overfit,
         gradient_clip_val=1.0,
-        seed=args.seed
+        seed=args.seed,
+        validate=validate,
+        val_ratio=args.val_ratio
     )
     
     logger.info(f"Configuración:")
@@ -174,6 +285,7 @@ def main():
     logger.info(f"  Batch size: {config.batch_size}")
     logger.info(f"  Learning rate: {config.learning_rate}")
     logger.info(f"  Overfit mode: {config.overfit_single_batch}")
+    logger.info(f"  Validation: {config.validate}")
     
     # =========================================================================
     # 5. Entrenar
@@ -197,7 +309,7 @@ def main():
     logger.info("Iniciando entrenamiento...")
     logger.info("=" * 60 + "\n")
     
-    history = trainer.fit(train_loader)
+    history = trainer.fit(train_loader, val_loader=val_loader)
     
     # =========================================================================
     # 6. Resultados
@@ -205,13 +317,26 @@ def main():
     logger.info("\n" + "=" * 60)
     logger.info("Entrenamiento completado!")
     logger.info("=" * 60)
-    logger.info(f"  Loss inicial: {history['loss'][0]:.4f}")
-    logger.info(f"  Loss final: {history['loss'][-1]:.4f}")
+    logger.info(f"  Train Loss: {history['train_loss'][0]:.4f} → {history['train_loss'][-1]:.4f}")
     
-    if history['loss'][-1] < history['loss'][0]:
-        logger.info("  ✅ El loss disminuyó - el modelo está aprendiendo")
+    if history['val_loss']:
+        logger.info(f"  Val Loss: {history['val_loss'][0]:.4f} → {history['val_loss'][-1]:.4f}")
+        
+        # Diagnóstico
+        train_improved = history['train_loss'][-1] < history['train_loss'][0]
+        val_improved = history['val_loss'][-1] < history['val_loss'][0]
+        
+        if train_improved and val_improved:
+            logger.info("  ✅ Modelo generaliza - train y val loss disminuyen")
+        elif train_improved and not val_improved:
+            logger.warning("  ⚠️ Posible overfitting - train ↓ pero val ↑")
+        else:
+            logger.warning("  ⚠️ Underfitting - loss no disminuye")
     else:
-        logger.warning("  ⚠️ El loss no disminuyó - revisar hiperparámetros")
+        if history['train_loss'][-1] < history['train_loss'][0]:
+            logger.info("  ✅ El loss disminuyó - el modelo está aprendiendo")
+        else:
+            logger.warning("  ⚠️ El loss no disminuyó - revisar hiperparámetros")
     
     return 0
 

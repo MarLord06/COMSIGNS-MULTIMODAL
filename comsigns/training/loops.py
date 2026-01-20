@@ -108,6 +108,66 @@ def train_one_epoch(
     }
 
 
+def validate_one_epoch(
+    model: nn.Module,
+    dataloader: DataLoader,
+    loss_fn: nn.Module,
+    device: torch.device
+) -> Dict[str, float]:
+    """
+    Validate model for one epoch (forward-only, no gradients).
+    
+    Pure function that performs one full validation pass.
+    
+    Args:
+        model: Model to validate (will be set to eval mode)
+        dataloader: Validation data loader
+        loss_fn: Loss function (e.g., CrossEntropyLoss)
+        device: Device to use
+    
+    Returns:
+        Dictionary with validation metrics:
+        - "loss": Average validation loss
+        - "num_steps": Number of validation steps
+    
+    Note:
+        - Sets model to eval mode
+        - Uses torch.no_grad() context
+        - Does NOT call backward() or optimizer
+    """
+    model.eval()
+    
+    total_loss = 0.0
+    num_steps = 0
+    
+    with torch.no_grad():
+        for batch in dataloader:
+            # Move batch to device
+            hand = batch["hand"].to(device)
+            body = batch["body"].to(device)
+            face = batch["face"].to(device)
+            labels = batch["labels"].to(device)
+            lengths = batch["lengths"].to(device)
+            mask = batch.get("mask")
+            if mask is not None and mask.numel() > 0:
+                mask = mask.to(device)
+            else:
+                mask = None
+            
+            # Forward pass only
+            logits = model(hand, body, face, lengths=lengths, mask=mask)
+            loss = loss_fn(logits, labels)
+            
+            # Accumulate metrics
+            total_loss += loss.item()
+            num_steps += 1
+    
+    return {
+        "loss": total_loss / max(num_steps, 1),
+        "num_steps": num_steps
+    }
+
+
 def train(
     model: nn.Module,
     train_loader: DataLoader,

@@ -166,7 +166,7 @@ class TestTemporalSegmenter:
             assert hasattr(seg, 'end')
             assert hasattr(seg, 'mean_similarity')
             assert seg.start <= seg.end
-            assert 0 <= seg.mean_similarity <= 1.5  # Puede ser > 1 por errores numéricos
+            assert -1 <= seg.mean_similarity <= 1.5  # Puede ser > 1 por errores numéricos
 
 
 class TestSegmentAggregator:

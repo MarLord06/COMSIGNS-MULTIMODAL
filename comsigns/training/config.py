@@ -29,6 +29,8 @@ class TrainerConfig:
         overfit_single_batch: If True, train on same batch repeatedly (debug mode)
         gradient_clip_val: Max gradient norm for clipping (None to disable)
         seed: Random seed for reproducibility (None for no seeding)
+        validate: If True, run validation after each epoch
+        val_ratio: Fraction of data for validation (only used if validate=True)
     
     Example:
         >>> config = TrainerConfig(epochs=20, learning_rate=3e-4)
@@ -44,6 +46,8 @@ class TrainerConfig:
     overfit_single_batch: bool = False
     gradient_clip_val: Optional[float] = 1.0
     seed: Optional[int] = 42
+    validate: bool = True
+    val_ratio: float = 0.2
     
     def __post_init__(self):
         """Validate and resolve configuration."""
@@ -58,6 +62,13 @@ class TrainerConfig:
         
         if self.epochs <= 0:
             raise ValueError(f"epochs must be positive, got {self.epochs}")
+        
+        if not 0 < self.val_ratio < 1:
+            raise ValueError(f"val_ratio must be in (0, 1), got {self.val_ratio}")
+        
+        # Disable validation in overfit mode
+        if self.overfit_single_batch:
+            self.validate = False
     
     @staticmethod
     def _detect_device() -> str:
