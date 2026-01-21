@@ -28,7 +28,7 @@ import torch
 import numpy as np
 
 try:
-    from sklearn.metrics import precision_recall_fscore_support
+    from sklearn.metrics import precision_recall_fscore_support, confusion_matrix
     HAS_SKLEARN = True
 except ImportError:
     HAS_SKLEARN = False
@@ -310,6 +310,381 @@ class MetricsTracker:
             f"MetricsTracker(num_classes={self.num_classes}, "
             f"topk={self.topk}, samples={self._total_samples})"
         )
+
+    # =========================================================================
+    # Per-Class Metrics Methods
+    # =========================================================================
+    
+    def compute_per_class(
+        self,
+        class_names: Optional[List[str]] = None
+    ) -> Dict[str, Dict[str, float]]:
+        """
+        Compute per-class metrics (precision, recall, F1, support, accuracy).
+        
+        Args:
+            class_names: Optional list of class names. If provided, keys will be
+                        class names instead of class indices.
+        
+        Returns:
+            Dictionary mapping class ID (or name) to metrics dict with keys:
+            - precision: Precision for this class
+            - recall: Recall for this class
+            - f1: F1-score for this class
+            - support: Number of true samples for this class
+            - accuracy: Per-class accuracy (correct / support)
+            - top5_acc: Top-5 accuracy for this class (if 5 in topk)
+        
+        Example:
+            >>> tracker.compute_per_class()
+            {
+                0: {"precision": 0.8, "recall": 0.75, "f1": 0.77, "support": 20, "accuracy": 0.75},
+                1: {"precision": 0.6, "recall": 0.5, "f1": 0.55, "support": 10, "accuracy": 0.5},
+                ...
+            }
+        """
+        if self._total_samples == 0:
+            return {}
+        
+        if not HAS_SKLEARN:
+            logger.warning("sklearn not available, returning empty per-class metrics")
+            return {}
+        
+        # Concatenate accumulated tensors
+        logits = torch.cat(self._all_logits, dim=0)
+        labels = torch.cat(self._all_labels, dim=0)
+        
+        # Convert to numpy
+        labels_np = labels.cpu().numpy()
+        preds_np = logits.argmax(dim=1).cpu().numpy()
+        
+        # Get unique classes that appear in labels
+        unique_classes = np.unique(labels_np)
+        
+        # Compute precision, recall, f1 per class
+        precision, recall, f1, support = precision_recall_fscore_support(
+            labels_np,
+            preds_np,
+            labels=unique_classes,
+            average=None,
+            zero_division=0.0
+        )
+        
+        # Compute per-class accuracy
+        per_class_accuracy = {}
+        for cls in unique_classes:
+            mask = labels_np == cls
+            if mask.sum() > 0:
+                per_class_accuracy[cls] = (preds_np[mask] == cls).mean()
+            else:
+                per_class_accuracy[cls] = 0.0
+        
+        # Compute top-k per class if requested
+        topk_per_class = {}
+        for k in self.topk:
+            topk_per_class[k] = self._compute_topk_per_class(logits, labels, k)
+        
+        # Build results dictionary
+        results = {}
+        for i, cls in enumerate(unique_classes):
+            cls_key = class_names[cls] if class_names and cls < len(class_names) else int(cls)
+            
+            metrics_dict = {
+                "class_id": int(cls),
+                "precision": float(precision[i]),
+                "recall": float(recall[i]),
+                "f1": float(f1[i]),
+                "support": int(support[i]),
+                "accuracy": float(per_class_accuracy[cls])
+            }
+            
+            # Add top-k accuracies
+            for k in self.topk:
+                metrics_dict[f"top{k}_acc"] = topk_per_class[k].get(int(cls), 0.0)
+            
+            results[cls_key] = metrics_dict
+        
+        return results
+    
+    def _compute_topk_per_class(
+        self,
+        logits: torch.Tensor,
+        labels: torch.Tensor,
+        k: int
+    ) -> Dict[int, float]:
+        """
+        Compute Top-K accuracy per class.
+        
+        Args:
+            logits: All logits [N, num_classes]
+            labels: All labels [N]
+            k: Value of K for top-k accuracy
+        
+        Returns:
+            Dict mapping class_id to top-k accuracy for that class
+        """
+        k = min(k, logits.size(1))
+        _, topk_indices = logits.topk(k, dim=1, largest=True, sorted=False)
+        correct = topk_indices.eq(labels.unsqueeze(1)).any(dim=1)
+        
+        labels_np = labels.cpu().numpy()
+        correct_np = correct.cpu().numpy()
+        
+        unique_classes = np.unique(labels_np)
+        topk_per_class = {}
+        
+        for cls in unique_classes:
+            mask = labels_np == cls
+            if mask.sum() > 0:
+                topk_per_class[int(cls)] = float(correct_np[mask].mean())
+            else:
+                topk_per_class[int(cls)] = 0.0
+        
+        return topk_per_class
+    
+    def get_confusion_matrix(self) -> np.ndarray:
+        """
+        Get confusion matrix from accumulated predictions.
+        
+        Returns:
+            Confusion matrix as numpy array [num_classes, num_classes].
+            Entry [i, j] = number of samples with true label i predicted as j.
+            Returns empty array if no samples or sklearn not available.
+        """
+        if self._total_samples == 0:
+            return np.array([])
+        
+        if not HAS_SKLEARN:
+            logger.warning("sklearn not available for confusion matrix")
+            return np.array([])
+        
+        labels = torch.cat(self._all_labels, dim=0).cpu().numpy()
+        logits = torch.cat(self._all_logits, dim=0)
+        preds = logits.argmax(dim=1).cpu().numpy()
+        
+        # Use all class labels for full matrix
+        return confusion_matrix(
+            labels,
+            preds,
+            labels=list(range(self.num_classes))
+        )
+    
+    def get_worst_classes(
+        self,
+        k: int = 10,
+        metric: str = "f1",
+        class_names: Optional[List[str]] = None,
+        min_support: int = 1
+    ) -> List[Dict[str, Union[str, int, float]]]:
+        """
+        Get K classes with worst performance on specified metric.
+        
+        Args:
+            k: Number of worst classes to return
+            metric: Metric to sort by ("f1", "precision", "recall", "accuracy")
+            class_names: Optional class name mapping
+            min_support: Minimum samples required to be considered
+        
+        Returns:
+            List of dicts with class info, sorted from worst to best.
+            Each dict contains: class_id, name (if available), metric value, support
+        """
+        per_class = self.compute_per_class(class_names)
+        
+        if not per_class:
+            return []
+        
+        # Filter by minimum support and valid metric
+        valid_classes = []
+        for cls_key, metrics in per_class.items():
+            if metrics["support"] >= min_support and metric in metrics:
+                valid_classes.append({
+                    "class_key": cls_key,
+                    "class_id": metrics["class_id"],
+                    "name": cls_key if isinstance(cls_key, str) else None,
+                    metric: metrics[metric],
+                    "support": metrics["support"],
+                    "precision": metrics["precision"],
+                    "recall": metrics["recall"],
+                    "f1": metrics["f1"],
+                    "accuracy": metrics["accuracy"]
+                })
+        
+        # Sort by metric (ascending = worst first)
+        valid_classes.sort(key=lambda x: x[metric])
+        
+        return valid_classes[:k]
+    
+    def get_best_classes(
+        self,
+        k: int = 10,
+        metric: str = "f1",
+        class_names: Optional[List[str]] = None,
+        min_support: int = 1
+    ) -> List[Dict[str, Union[str, int, float]]]:
+        """
+        Get K classes with best performance on specified metric.
+        
+        Args:
+            k: Number of best classes to return
+            metric: Metric to sort by ("f1", "precision", "recall", "accuracy")
+            class_names: Optional class name mapping
+            min_support: Minimum samples required to be considered
+        
+        Returns:
+            List of dicts with class info, sorted from best to worst.
+        """
+        per_class = self.compute_per_class(class_names)
+        
+        if not per_class:
+            return []
+        
+        valid_classes = []
+        for cls_key, metrics in per_class.items():
+            if metrics["support"] >= min_support and metric in metrics:
+                valid_classes.append({
+                    "class_key": cls_key,
+                    "class_id": metrics["class_id"],
+                    "name": cls_key if isinstance(cls_key, str) else None,
+                    metric: metrics[metric],
+                    "support": metrics["support"],
+                    "precision": metrics["precision"],
+                    "recall": metrics["recall"],
+                    "f1": metrics["f1"],
+                    "accuracy": metrics["accuracy"]
+                })
+        
+        # Sort by metric (descending = best first)
+        valid_classes.sort(key=lambda x: x[metric], reverse=True)
+        
+        return valid_classes[:k]
+    
+    def get_class_distribution_analysis(
+        self,
+        class_names: Optional[List[str]] = None
+    ) -> Dict[str, Union[int, float, Dict]]:
+        """
+        Analyze class distribution and coverage in accumulated data.
+        
+        Returns:
+            Dictionary with:
+            - total_samples: Total number of samples
+            - num_classes_seen: Number of unique classes in data
+            - num_classes_defined: Total defined classes (num_classes)
+            - coverage_ratio: Proportion of classes seen
+            - samples_per_class: Dict mapping class to sample count
+            - class_imbalance_ratio: max_support / min_support
+        """
+        if self._total_samples == 0:
+            return {
+                "total_samples": 0,
+                "num_classes_seen": 0,
+                "num_classes_defined": self.num_classes,
+                "coverage_ratio": 0.0,
+                "samples_per_class": {},
+                "class_imbalance_ratio": 0.0,
+                "min_support": 0,
+                "max_support": 0,
+                "mean_support": 0.0,
+                "std_support": 0.0
+            }
+        
+        labels = torch.cat(self._all_labels, dim=0).cpu().numpy()
+        unique, counts = np.unique(labels, return_counts=True)
+        
+        samples_per_class = {}
+        for cls, count in zip(unique, counts):
+            cls_key = class_names[cls] if class_names and cls < len(class_names) else int(cls)
+            samples_per_class[cls_key] = int(count)
+        
+        min_support = int(counts.min())
+        max_support = int(counts.max())
+        imbalance_ratio = max_support / min_support if min_support > 0 else float('inf')
+        
+        return {
+            "total_samples": int(self._total_samples),
+            "num_classes_seen": int(len(unique)),
+            "num_classes_defined": self.num_classes,
+            "coverage_ratio": len(unique) / self.num_classes if self.num_classes > 0 else 0.0,
+            "samples_per_class": samples_per_class,
+            "class_imbalance_ratio": float(imbalance_ratio),
+            "min_support": min_support,
+            "max_support": max_support,
+            "mean_support": float(counts.mean()),
+            "std_support": float(counts.std())
+        }
+    
+    def format_per_class_report(
+        self,
+        class_names: Optional[List[str]] = None,
+        sort_by: str = "support",
+        ascending: bool = False,
+        top_n: Optional[int] = None
+    ) -> str:
+        """
+        Format per-class metrics as a human-readable report.
+        
+        Args:
+            class_names: Optional class name mapping
+            sort_by: Column to sort by (support, f1, precision, recall, accuracy)
+            ascending: Sort order
+            top_n: Only show top N classes (None for all)
+        
+        Returns:
+            Formatted string report
+        """
+        per_class = self.compute_per_class(class_names)
+        
+        if not per_class:
+            return "No samples accumulated yet."
+        
+        # Convert to list for sorting
+        rows = []
+        for cls_key, metrics in per_class.items():
+            name = cls_key if isinstance(cls_key, str) else f"Class {cls_key}"
+            rows.append({
+                "name": name,
+                "class_id": metrics["class_id"],
+                **{k: v for k, v in metrics.items() if k != "class_id"}
+            })
+        
+        # Sort
+        rows.sort(key=lambda x: x.get(sort_by, 0), reverse=not ascending)
+        
+        if top_n:
+            rows = rows[:top_n]
+        
+        # Format report
+        lines = []
+        lines.append("=" * 80)
+        lines.append("PER-CLASS METRICS REPORT")
+        lines.append("=" * 80)
+        lines.append(
+            f"{'Class':<30} {'Support':>8} {'Prec':>7} {'Recall':>7} "
+            f"{'F1':>7} {'Acc':>7} {'Top5':>7}"
+        )
+        lines.append("-" * 80)
+        
+        for row in rows:
+            name = row["name"][:28] if len(row["name"]) > 28 else row["name"]
+            top5 = row.get("top5_acc", 0.0)
+            lines.append(
+                f"{name:<30} {row['support']:>8} {row['precision']:>7.3f} "
+                f"{row['recall']:>7.3f} {row['f1']:>7.3f} {row['accuracy']:>7.3f} "
+                f"{top5:>7.3f}"
+            )
+        
+        lines.append("-" * 80)
+        
+        # Summary statistics
+        f1_scores = [r["f1"] for r in rows]
+        lines.append(f"Total classes: {len(rows)}")
+        lines.append(f"Mean F1: {np.mean(f1_scores):.3f} (std: {np.std(f1_scores):.3f})")
+        lines.append(f"Classes with F1 > 0.5: {sum(1 for f in f1_scores if f > 0.5)}/{len(rows)}")
+        lines.append(f"Classes with F1 = 0.0: {sum(1 for f in f1_scores if f == 0.0)}/{len(rows)}")
+        lines.append("=" * 80)
+        
+        return "\n".join(lines)
 
 
 # =============================================================================

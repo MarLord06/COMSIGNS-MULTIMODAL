@@ -8,12 +8,14 @@ model setup, optimization, and training loop orchestration.
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Union
+from pathlib import Path
 import logging
 
 from .config import TrainerConfig
 from .loops import train_one_epoch, train, validate_gradients, validate_one_epoch
 from .metrics import MetricsTracker
+from .evaluation import FinalEvaluator, run_final_evaluation
 
 logger = logging.getLogger(__name__)
 
@@ -113,8 +115,12 @@ class Trainer:
         self,
         train_loader: DataLoader,
         val_loader: Optional[DataLoader] = None,
-        epochs: Optional[int] = None
-    ) -> Dict[str, List[float]]:
+        epochs: Optional[int] = None,
+        class_names: Optional[List[str]] = None,
+        log_per_class_every: int = 0,
+        run_final_eval: bool = False,
+        eval_output_dir: Optional[Union[str, Path]] = None
+    ) -> Dict[str, Any]:
         """
         Train the model with optional validation.
         
@@ -125,15 +131,29 @@ class Trainer:
             val_loader: Optional DataLoader for validation. If None and
                        config.validate=True, validation is skipped.
             epochs: Override number of epochs from config
+            class_names: Optional list of class names for per-class logging
+            log_per_class_every: Log per-class metrics every N epochs.
+                                 0 = never, 1 = every epoch, 5 = every 5 epochs.
+                                 Final epoch always logs if > 0.
+            run_final_eval: Whether to run final evaluation after training.
+                           Generates confusion matrix and per-class metrics.
+            eval_output_dir: Directory to save evaluation artifacts.
+                            Required if run_final_eval=True.
         
         Returns:
             Training history dictionary with:
             - "train_loss": List of average training loss per epoch
             - "val_loss": List of average validation loss per epoch (empty if no validation)
             - "epoch": List of epoch numbers
+            - "final_eval": Final evaluation results (if run_final_eval=True)
+            - "eval_artifacts": Paths to saved artifacts (if run_final_eval=True)
         
         Example:
-            >>> history = trainer.fit(train_loader, val_loader)
+            >>> history = trainer.fit(
+            ...     train_loader, val_loader,
+            ...     run_final_eval=True,
+            ...     eval_output_dir="experiments/run_001/"
+            ... )
             >>> plt.plot(history["epoch"], history["train_loss"], label="train")
             >>> plt.plot(history["epoch"], history["val_loss"], label="val")
         """
@@ -190,7 +210,16 @@ class Trainer:
             val_metrics_results = None
             
             if self.config.validate and val_loader is not None:
-                val_loss, val_metrics_results = self._validate_with_metrics(val_loader)
+                # Determine if we should log per-class metrics this epoch
+                should_log_per_class = (
+                    log_per_class_every > 0 and 
+                    (epoch % log_per_class_every == 0 or epoch == self.config.epochs)
+                )
+                val_loss, val_metrics_results = self._validate_with_metrics(
+                    val_loader,
+                    log_per_class=should_log_per_class,
+                    class_names=class_names
+                )
                 self.history["val_loss"].append(val_loss)
             
             # Logging
@@ -220,11 +249,41 @@ class Trainer:
             logger.info(f"  Val Loss: {self.history['val_loss'][0]:.4f} → {self.history['val_loss'][-1]:.4f}")
         logger.info(f"  Total steps: {self.global_step}")
         
+        # =====================================================================
+        # FINAL EVALUATION (post-training, separate from epoch loop)
+        # =====================================================================
+        if run_final_eval and val_loader is not None:
+            if eval_output_dir is None:
+                raise ValueError("eval_output_dir required when run_final_eval=True")
+            
+            logger.info("\n" + "=" * 60)
+            logger.info("RUNNING FINAL EVALUATION")
+            logger.info("=" * 60)
+            
+            eval_result, artifact_paths = run_final_evaluation(
+                model=self.model,
+                val_loader=val_loader,
+                num_classes=self._num_classes,
+                output_dir=eval_output_dir,
+                class_names=class_names,
+                device=self.device,
+                dataset_name="validation",
+                epoch=self.config.epochs
+            )
+            
+            # Store in history
+            self.history["final_eval"] = eval_result.get_global_metrics()
+            self.history["eval_artifacts"] = {k: str(v) for k, v in artifact_paths.items()}
+            
+            logger.info(f"Final evaluation artifacts saved to: {eval_output_dir}")
+        
         return self.history
     
     def _validate_with_metrics(
         self,
-        val_loader: DataLoader
+        val_loader: DataLoader,
+        log_per_class: bool = False,
+        class_names: Optional[List[str]] = None
     ) -> tuple:
         """
         Run validation with metrics tracking.
@@ -235,6 +294,8 @@ class Trainer:
         
         Args:
             val_loader: Validation DataLoader
+            log_per_class: Whether to log per-class metrics summary
+            class_names: Optional class names for per-class logging
         
         Returns:
             Tuple of (avg_loss, metrics_dict or None)
@@ -282,8 +343,96 @@ class Trainer:
         metrics_results = None
         if self._metrics_tracker is not None and self._metrics_tracker.num_samples > 0:
             metrics_results = self._metrics_tracker.compute()
+            
+            # Log per-class summary if requested
+            if log_per_class:
+                self._log_per_class_summary(class_names)
         
         return avg_loss, metrics_results
+    
+    def _log_per_class_summary(
+        self,
+        class_names: Optional[List[str]] = None,
+        worst_k: int = 5,
+        best_k: int = 3
+    ) -> None:
+        """
+        Log structured summary of per-class metrics.
+        
+        Shows:
+        - Distribution analysis
+        - Worst performing classes
+        - Best performing classes
+        - Classes with F1 > 0.5 count
+        
+        Args:
+            class_names: Optional class name mapping
+            worst_k: Number of worst classes to show
+            best_k: Number of best classes to show
+        """
+        if self._metrics_tracker is None:
+            return
+        
+        # Get distribution analysis
+        dist = self._metrics_tracker.get_class_distribution_analysis(class_names)
+        worst = self._metrics_tracker.get_worst_classes(
+            k=worst_k, metric="f1", class_names=class_names, min_support=1
+        )
+        best = self._metrics_tracker.get_best_classes(
+            k=best_k, metric="f1", class_names=class_names, min_support=1
+        )
+        
+        # Get per-class metrics for summary stats
+        per_class = self._metrics_tracker.compute_per_class(class_names)
+        f1_scores = [m["f1"] for m in per_class.values()] if per_class else []
+        
+        logger.info("")
+        logger.info("=" * 60)
+        logger.info("PER-CLASS VALIDATION METRICS")
+        logger.info("=" * 60)
+        
+        # Distribution summary
+        logger.info(f"Classes seen: {dist['num_classes_seen']}/{dist['num_classes_defined']} "
+                   f"({dist['coverage_ratio']:.1%})")
+        logger.info(f"Imbalance ratio: {dist['class_imbalance_ratio']:.1f}x "
+                   f"(min={dist['min_support']}, max={dist['max_support']})")
+        
+        # F1 distribution
+        if f1_scores:
+            good_f1 = sum(1 for f in f1_scores if f > 0.5)
+            zero_f1 = sum(1 for f in f1_scores if f == 0.0)
+            logger.info(f"F1 > 0.5: {good_f1}/{len(f1_scores)} classes ({good_f1/len(f1_scores):.1%})")
+            logger.info(f"F1 = 0.0: {zero_f1}/{len(f1_scores)} classes ({zero_f1/len(f1_scores):.1%})")
+        
+        # Worst classes
+        if worst:
+            logger.info("")
+            logger.info(f"WORST {len(worst)} CLASSES (by F1):")
+            logger.info(f"  {'Class':<30} {'Support':>8} {'P':>6} {'R':>6} {'F1':>6}")
+            logger.info(f"  {'-'*58}")
+            for cls in worst:
+                name = cls.get("name") or f"Class {cls['class_id']}"
+                name = name[:28] if len(name) > 28 else name
+                logger.info(
+                    f"  {name:<30} {cls['support']:>8} "
+                    f"{cls['precision']:>6.3f} {cls['recall']:>6.3f} {cls['f1']:>6.3f}"
+                )
+        
+        # Best classes
+        if best:
+            logger.info("")
+            logger.info(f"BEST {len(best)} CLASSES (by F1):")
+            logger.info(f"  {'Class':<30} {'Support':>8} {'P':>6} {'R':>6} {'F1':>6}")
+            logger.info(f"  {'-'*58}")
+            for cls in best:
+                name = cls.get("name") or f"Class {cls['class_id']}"
+                name = name[:28] if len(name) > 28 else name
+                logger.info(
+                    f"  {name:<30} {cls['support']:>8} "
+                    f"{cls['precision']:>6.3f} {cls['recall']:>6.3f} {cls['f1']:>6.3f}"
+                )
+        
+        logger.info("=" * 60)
     
     def train_step(
         self,
@@ -376,6 +525,82 @@ class Trainer:
     def get_model(self) -> nn.Module:
         """Return the model (on the training device)."""
         return self.model
+    
+    def get_validation_metrics(
+        self,
+        class_names: Optional[List[str]] = None
+    ) -> Optional[Dict]:
+        """
+        Get per-class metrics from the last validation run.
+        
+        Must be called after fit() with validation.
+        
+        Args:
+            class_names: Optional class name mapping
+        
+        Returns:
+            Dict with per-class metrics, or None if no validation was run
+            or metrics tracker not available.
+        """
+        if self._metrics_tracker is None or self._metrics_tracker.num_samples == 0:
+            return None
+        return self._metrics_tracker.compute_per_class(class_names)
+    
+    def get_confusion_matrix(self) -> Optional[Any]:
+        """
+        Get confusion matrix from the last validation run.
+        
+        Must be called after fit() with validation.
+        
+        Returns:
+            numpy.ndarray confusion matrix [num_classes, num_classes],
+            or None if no validation was run.
+        """
+        if self._metrics_tracker is None or self._metrics_tracker.num_samples == 0:
+            return None
+        return self._metrics_tracker.get_confusion_matrix()
+    
+    def get_worst_classes(
+        self,
+        k: int = 10,
+        metric: str = "f1",
+        class_names: Optional[List[str]] = None
+    ) -> List[Dict]:
+        """
+        Get K worst performing classes from last validation.
+        
+        Args:
+            k: Number of classes to return
+            metric: Metric to rank by ("f1", "precision", "recall", "accuracy")
+            class_names: Optional class name mapping
+        
+        Returns:
+            List of class info dicts, sorted from worst to best
+        """
+        if self._metrics_tracker is None:
+            return []
+        return self._metrics_tracker.get_worst_classes(k, metric, class_names)
+    
+    def get_best_classes(
+        self,
+        k: int = 10,
+        metric: str = "f1",
+        class_names: Optional[List[str]] = None
+    ) -> List[Dict]:
+        """
+        Get K best performing classes from last validation.
+        
+        Args:
+            k: Number of classes to return
+            metric: Metric to rank by ("f1", "precision", "recall", "accuracy")
+            class_names: Optional class name mapping
+        
+        Returns:
+            List of class info dicts, sorted from best to worst
+        """
+        if self._metrics_tracker is None:
+            return []
+        return self._metrics_tracker.get_best_classes(k, metric, class_names)
     
     def state_dict(self) -> Dict[str, Any]:
         """

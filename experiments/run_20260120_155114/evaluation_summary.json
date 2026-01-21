@@ -1,0 +1,24 @@
+{
+  "accuracy": 0.23032629558541268,
+  "precision_macro": 0.09025515504010127,
+  "recall_macro": 0.11765821792703514,
+  "f1_macro": 0.09460546382593463,
+  "precision_weighted": 0.1694888444888445,
+  "recall_weighted": 0.23032629558541268,
+  "f1_weighted": 0.183036634316396,
+  "num_samples": 521,
+  "num_classes": 505,
+  "dataset": "validation",
+  "epoch": 50,
+  "timestamp": "2026-01-20T16:20:13.980450",
+  "class_statistics": {
+    "classes_with_support": 264,
+    "classes_with_f1_above_0.5": 17,
+    "classes_with_f1_zero": 447,
+    "mean_f1": 0.052267177044427245,
+    "std_f1": 0.1583491441380682,
+    "min_support": 1,
+    "max_support": 15,
+    "mean_support": 1.9734848484848484
+  }
+}

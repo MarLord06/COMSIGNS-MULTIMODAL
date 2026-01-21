@@ -16,6 +16,7 @@ Ejemplo de uso:
 import argparse
 import logging
 import sys
+from datetime import datetime
 from pathlib import Path
 
 # Agregar el directorio raíz al path (donde está el paquete comsigns)
@@ -108,6 +109,17 @@ def parse_args():
         type=int,
         default=42,
         help='Random seed (default: 42)'
+    )
+    parser.add_argument(
+        '--eval',
+        action='store_true',
+        help='Ejecutar evaluación final y guardar matriz de confusión'
+    )
+    parser.add_argument(
+        '--eval-output',
+        type=Path,
+        default=None,
+        help='Directorio para guardar artefactos de evaluación (default: experiments/run_XXX/)'
     )
     
     return parser.parse_args()
@@ -290,7 +302,7 @@ def main():
     # =========================================================================
     # 5. Entrenar
     # =========================================================================
-    trainer = Trainer(model, config)
+    trainer = Trainer(model, config, num_classes=num_classes)
     
     # Validar que todo funciona antes de entrenar
     logger.info("\nValidando setup...")
@@ -304,12 +316,42 @@ def main():
     logger.info(f"  Loss inicial: {validation['loss']:.4f}")
     logger.info(f"  Gradientes OK: {validation['non_zero_params']}/{validation['total_params']}")
     
+    # Preparar evaluación final si está habilitada
+    eval_output_dir = None
+    class_names = None
+    
+    if args.eval:
+        if args.eval_output:
+            eval_output_dir = args.eval_output
+        else:
+            # Crear directorio con timestamp
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            eval_output_dir = PROJECT_ROOT /'comsigns' /'experiments' / f'run_{timestamp}'
+        
+        eval_output_dir = Path(eval_output_dir)
+        eval_output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Obtener nombres de clases del dataset
+        if args.stratified:
+            class_names = list(train_dataset.gloss_to_id.keys())
+        else:
+            class_names = list(dataset.gloss_to_id.keys())
+        
+        logger.info(f"  Evaluación final: habilitada")
+        logger.info(f"  Artefactos se guardarán en: {eval_output_dir}")
+    
     # Entrenar
     logger.info("\n" + "=" * 60)
     logger.info("Iniciando entrenamiento...")
     logger.info("=" * 60 + "\n")
     
-    history = trainer.fit(train_loader, val_loader=val_loader)
+    history = trainer.fit(
+        train_loader, 
+        val_loader=val_loader,
+        run_final_eval=args.eval,
+        eval_output_dir=eval_output_dir,
+        class_names=class_names
+    )
     
     # =========================================================================
     # 6. Resultados
@@ -337,6 +379,14 @@ def main():
             logger.info("  ✅ El loss disminuyó - el modelo está aprendiendo")
         else:
             logger.warning("  ⚠️ El loss no disminuyó - revisar hiperparámetros")
+    
+    # Mostrar artefactos de evaluación si se generaron
+    if args.eval and 'eval_artifacts' in history:
+        logger.info("\n" + "=" * 60)
+        logger.info("Artefactos de evaluación guardados:")
+        logger.info("=" * 60)
+        for name, path in history['eval_artifacts'].items():
+            logger.info(f"  {name}: {path}")
     
     return 0
 

@@ -268,29 +268,13 @@ Training complete!
 
 ## 📊 Métricas de Éxito
 
-| Métrica | Criterio | Estado |
-|---------|----------|--------|
-| Split correcto | `len(train) + len(val) == len(dataset)` | ✅ |
-| Reproducibilidad | Mismo seed → mismo split | ✅ |
-| Validación sin gradientes | `param.grad is None` después de val | ✅ |
-| Logging correcto | Train y Val loss aparecen | ✅ |
-| Backward compatible | `validate=False` funciona como antes | ✅ |
-
----
-
-## ✅ Resultados de Implementación
-
-**Tests creados**: 19 tests en `tests/unit/test_validation.py`
-
-**Archivos creados/modificados**:
-- `core/data/splits.py` - NUEVO: funciones de split
-- `core/data/__init__.py` - NUEVO: exports
-- `training/config.py` - MODIFICADO: validate, val_ratio
-- `training/loops.py` - MODIFICADO: validate_one_epoch
-- `training/trainer.py` - MODIFICADO: integración validación
-- `scripts/train.py` - MODIFICADO: --no-validate, --val-ratio
-
-**Total tests pasando**: 41 (22 trainer + 19 validation)
+| Métrica | Criterio |
+|---------|----------|
+| Split correcto | `len(train) + len(val) == len(dataset)` |
+| Reproducibilidad | Mismo seed → mismo split |
+| Validación sin gradientes | `param.grad is None` después de val |
+| Logging correcto | Train y Val loss aparecen |
+| Backward compatible | `validate=False` funciona como antes |
 
 ---
 
