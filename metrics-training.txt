@@ -1,0 +1,101 @@
+You are implementing evaluation metrics for a controlled experiment in a
+multiclass sign language classification system.
+
+Context:
+- Baseline experiment: 505 classes
+- Experimental condition: TAIL → OTHER remapping (≈50 classes)
+- Goal is NOT SOTA, but to validate that the model learns meaningful signals
+  and predicts some glosses correctly.
+
+STRICT CONSTRAINTS:
+- Do NOT change model architecture
+- Do NOT change loss functions
+- Do NOT change optimizer or hyperparameters
+- Metrics must be computed from model outputs only (logits + labels)
+- Implementation must be deterministic and reproducible
+
+--------------------------------------------------
+METRICS TO IMPLEMENT
+--------------------------------------------------
+
+### 1. Global Metrics (computed per validation epoch)
+
+Compute and log:
+- accuracy@1
+- accuracy@5
+- micro_f1
+- macro_f1
+- weighted_f1
+
+These metrics must be returned as floats in [0,1].
+
+--------------------------------------------------
+### 2. Bucket-Aware Metrics
+
+Each class belongs to exactly one bucket:
+- HEAD
+- MID
+- TAIL (baseline) or OTHER (tail_to_other experiment)
+
+For EACH bucket compute:
+- accuracy@1
+- accuracy@5
+- macro_f1
+- num_classes_in_bucket
+- num_classes_predicted (≥1 correct prediction)
+
+Buckets must be derived from TRAIN SUPPORT only.
+
+--------------------------------------------------
+### 3. Coverage Metrics
+
+Compute class coverage:
+- coverage@1 = (#classes predicted at least once) / total_classes
+- coverage@5
+
+Also compute coverage per bucket:
+- coverage@1_head, coverage@1_mid, coverage@1_tail_or_other
+- coverage@5_head, ...
+
+--------------------------------------------------
+### 4. Collapse Diagnostics
+
+Compute:
+- pct_predictions_most_frequent_class
+- pct_predictions_other_class (if exists)
+- prediction_entropy (Shannon entropy over predicted class distribution)
+
+These metrics are for diagnosis only, not optimization.
+
+--------------------------------------------------
+### 5. Output Artifacts
+
+At end of training, export:
+
+1. metrics_global.json
+2. metrics_by_bucket.json
+3. coverage_metrics.json
+4. collapse_diagnostics.json
+
+All files must include:
+- experiment_id
+- num_classes
+- num_samples
+- timestamp
+
+--------------------------------------------------
+### 6. Comparative Readiness
+
+Ensure outputs are compatible with a future comparison script:
+- metric names must be identical between baseline and tail_to_other runs
+- missing buckets (e.g. TAIL vs OTHER) must be handled gracefully
+
+--------------------------------------------------
+### 7. Non-Goals (DO NOT IMPLEMENT)
+
+- No confusion matrix plotting
+- No per-class visualization
+- No few-shot logic
+- No tail rebalancing
+
+Focus on correctness, clarity, and minimalism.

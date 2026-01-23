@@ -27,6 +27,23 @@ from .coverage_metrics import (
     CoverageAnalyzer,
     compute_coverage_metrics
 )
+from .remapped_metrics import (
+    BucketMetricsResult,
+    PredictionDiagnostics,
+    BucketConfusionMatrix,
+    OtherDiagnostics,
+    RemappedMetricsTracker,
+    create_comparison_report
+)
+from .learned_words import (
+    LearnedWordCriteria,
+    ClassMetrics,
+    BucketLearnedStats,
+    LearnedWordsReport,
+    LearnedWordsAnalyzer,
+    compute_class_metrics_from_predictions,
+    analyze_learned_words
+)
 
 __all__ = [
     # Coverage (dict.json analysis)
@@ -44,5 +61,20 @@ __all__ = [
     # Coverage metrics
     "CoverageResult",
     "CoverageAnalyzer",
-    "compute_coverage_metrics"
+    "compute_coverage_metrics",
+    # Remapped metrics
+    "BucketMetricsResult",
+    "PredictionDiagnostics",
+    "BucketConfusionMatrix",
+    "OtherDiagnostics",
+    "RemappedMetricsTracker",
+    "create_comparison_report",
+    # Learned words analysis
+    "LearnedWordCriteria",
+    "ClassMetrics",
+    "BucketLearnedStats",
+    "LearnedWordsReport",
+    "LearnedWordsAnalyzer",
+    "compute_class_metrics_from_predictions",
+    "analyze_learned_words"
 ]

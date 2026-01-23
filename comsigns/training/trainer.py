@@ -119,7 +119,9 @@ class Trainer:
         class_names: Optional[List[str]] = None,
         log_per_class_every: int = 0,
         run_final_eval: bool = False,
-        eval_output_dir: Optional[Union[str, Path]] = None
+        eval_output_dir: Optional[Union[str, Path]] = None,
+        epoch_end_callback: Optional[callable] = None,
+        start_epoch: int = 1
     ) -> Dict[str, Any]:
         """
         Train the model with optional validation.
@@ -139,6 +141,10 @@ class Trainer:
                            Generates confusion matrix and per-class metrics.
             eval_output_dir: Directory to save evaluation artifacts.
                             Required if run_final_eval=True.
+            epoch_end_callback: Optional callback called after each epoch with
+                               signature: callback(epoch, model, optimizer, metrics)
+                               where metrics is a dict with 'train_loss', 'val_loss', etc.
+            start_epoch: Starting epoch number (for resuming training).
         
         Returns:
             Training history dictionary with:
@@ -183,7 +189,7 @@ class Trainer:
             logger.info("Overfit mode enabled - using single batch")
         
         # Training loop
-        for epoch in range(1, self.config.epochs + 1):
+        for epoch in range(start_epoch, self.config.epochs + 1):
             self.current_epoch = epoch
             logger.info(f"\n{'='*50}")
             logger.info(f"Epoch {epoch}/{self.config.epochs}")
@@ -242,6 +248,17 @@ class Trainer:
                     f"Epoch {epoch} | "
                     f"Train Loss: {train_loss:.4f}"
                 )
+            
+            # Epoch end callback for checkpointing
+            if epoch_end_callback is not None:
+                callback_metrics = {
+                    "epoch": epoch,
+                    "train_loss": train_loss,
+                    "val_loss": val_loss,
+                }
+                if val_metrics_results is not None:
+                    callback_metrics.update(val_metrics_results)
+                epoch_end_callback(epoch, self.model, self.optimizer, callback_metrics)
         
         logger.info(f"\nTraining complete!")
         logger.info(f"  Train Loss: {self.history['train_loss'][0]:.4f} → {self.history['train_loss'][-1]:.4f}")

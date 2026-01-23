@@ -32,6 +32,8 @@ models/*
 logs/*
 !logs/.gitkeep
 
+# Experiments
+experiments/*
 # Testing
 .pytest_cache/
 .coverage
