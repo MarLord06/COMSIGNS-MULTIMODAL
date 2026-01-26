@@ -3,16 +3,23 @@ import VideoUploader from './components/VideoUploader'
 import CameraCapture from './components/CameraCapture'
 import InferenceResult from './components/InferenceResult'
 import RealtimeResult from './components/RealtimeResult'
+import SampleUploader from './components/SampleUploader'
+import PredictionResult from './components/PredictionResult'
 import './App.css'
 
+// API URL - change for production
+const API_URL = 'http://localhost:8000'
+
 function App() {
-  const [mode, setMode] = useState('camera') // 'camera' o 'upload'
+  const [mode, setMode] = useState('sample') // 'camera', 'upload', or 'sample'
   const [result, setResult] = useState(null)
+  const [predictionResult, setPredictionResult] = useState(null)
   const [realtimePrediction, setRealtimePrediction] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
-  const handleInference = async (file) => {
+  // Handle video upload inference (existing)
+  const handleVideoInference = async (file) => {
     setLoading(true)
     setError(null)
     setResult(null)
@@ -21,7 +28,7 @@ function App() {
       const formData = new FormData()
       formData.append('file', file)
 
-      const response = await fetch('http://localhost:8000/infer/video', {
+      const response = await fetch(`${API_URL}/infer/video`, {
         method: 'POST',
         body: formData,
       })
@@ -35,6 +42,36 @@ function App() {
       setResult(data)
     } catch (err) {
       setError(err.message || 'Error desconocido')
+      console.error('Error:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Handle .pkl sample inference (new)
+  const handleSampleInference = async (file, topk = 5) => {
+    setLoading(true)
+    setError(null)
+    setPredictionResult(null)
+
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const response = await fetch(`${API_URL}/infer?topk=${topk}`, {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || 'Error en la inferencia')
+      }
+
+      const data = await response.json()
+      setPredictionResult(data)
+    } catch (err) {
+      setError(err.message || 'Error de conexión con el servidor')
       console.error('Error:', err)
     } finally {
       setLoading(false)
@@ -64,6 +101,13 @@ function App() {
           
           <div className="mode-toggle">
             <button
+              className={`mode-btn ${mode === 'sample' ? 'active' : ''}`}
+              onClick={() => setMode('sample')}
+            >
+              <span className="btn-icon">📦</span>
+              <span>Inferir Sample</span>
+            </button>
+            <button
               className={`mode-btn ${mode === 'camera' ? 'active' : ''}`}
               onClick={() => setMode('camera')}
             >
@@ -83,7 +127,25 @@ function App() {
 
       {/* Main Dashboard */}
       <main className="dashboard">
-        {mode === 'camera' ? (
+        {mode === 'sample' ? (
+          <div className="upload-container">
+            <div className="section-card full-width">
+              <div className="section-header">
+                <h2>📦 Inferir Sample</h2>
+                <p>Sube un archivo .pkl con features extraídos</p>
+              </div>
+              <SampleUploader
+                onUpload={handleSampleInference}
+                loading={loading}
+              />
+              {predictionResult && (
+                <div className="results-section">
+                  <PredictionResult result={predictionResult} />
+                </div>
+              )}
+            </div>
+          </div>
+        ) : mode === 'camera' ? (
           <div className="dashboard-grid">
             {/* Left Column - Camera */}
             <div className="dashboard-left">
@@ -126,7 +188,7 @@ function App() {
                 <p>Procesa un archivo de video completo</p>
               </div>
               <VideoUploader
-                onUpload={handleInference}
+                onUpload={handleVideoInference}
                 loading={loading}
               />
               {result && (
