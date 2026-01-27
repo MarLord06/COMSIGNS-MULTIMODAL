@@ -5,13 +5,14 @@ import InferenceResult from './components/InferenceResult'
 import RealtimeResult from './components/RealtimeResult'
 import SampleUploader from './components/SampleUploader'
 import PredictionResult from './components/PredictionResult'
+import ExpertPanel from './components/ExpertPanel'
 import './App.css'
 
 // API URL - change for production
 const API_URL = 'http://localhost:8000'
 
 function App() {
-  const [mode, setMode] = useState('sample') // 'camera', 'upload', or 'sample'
+  const [mode, setMode] = useState('expert') // 'expert', 'sample', 'camera', or 'upload'
   const [result, setResult] = useState(null)
   const [predictionResult, setPredictionResult] = useState(null)
   const [realtimePrediction, setRealtimePrediction] = useState(null)
@@ -101,6 +102,13 @@ function App() {
           
           <div className="mode-toggle">
             <button
+              className={`mode-btn ${mode === 'expert' ? 'active' : ''}`}
+              onClick={() => setMode('expert')}
+            >
+              <span className="btn-icon">🧠</span>
+              <span>Sistema Experto</span>
+            </button>
+            <button
               className={`mode-btn ${mode === 'sample' ? 'active' : ''}`}
               onClick={() => setMode('sample')}
             >
@@ -127,7 +135,9 @@ function App() {
 
       {/* Main Dashboard */}
       <main className="dashboard">
-        {mode === 'sample' ? (
+        {mode === 'expert' ? (
+          <ExpertPanel />
+        ) : mode === 'sample' ? (
           <div className="upload-container">
             <div className="section-card full-width">
               <div className="section-header">
