@@ -6,16 +6,20 @@ import RealtimeResult from './components/RealtimeResult'
 import SampleUploader from './components/SampleUploader'
 import PredictionResult from './components/PredictionResult'
 import ExpertPanel from './components/ExpertPanel'
+import VideoTranslator from './components/VideoTranslator'
+import VideoPredictionResults from './components/VideoPredictionResults'
+import { inferFromVideos } from './api/videoApi'
 import './App.css'
 
 // API URL - change for production
 const API_URL = 'http://localhost:8000'
 
 function App() {
-  const [mode, setMode] = useState('expert') // 'expert', 'sample', 'camera', or 'upload'
+  const [mode, setMode] = useState('video') // 'video', 'expert', 'sample', 'camera', or 'upload'
   const [result, setResult] = useState(null)
   const [predictionResult, setPredictionResult] = useState(null)
   const [realtimePrediction, setRealtimePrediction] = useState(null)
+  const [videoResults, setVideoResults] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
@@ -79,6 +83,23 @@ function App() {
     }
   }
 
+  // Handle video translation (multiple videos)
+  const handleVideoTranslation = async (files) => {
+    setLoading(true)
+    setError(null)
+    setVideoResults(null)
+
+    try {
+      const data = await inferFromVideos(files, { topk: 5 })
+      setVideoResults(data)
+    } catch (err) {
+      setError(err.message || 'Error en la traducción de video')
+      console.error('Error:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const handleRealtimePrediction = (prediction) => {
     setRealtimePrediction(prediction)
   }
@@ -102,6 +123,13 @@ function App() {
           
           <div className="mode-toggle">
             <button
+              className={`mode-btn ${mode === 'video' ? 'active' : ''}`}
+              onClick={() => setMode('video')}
+            >
+              <span className="btn-icon">🔮</span>
+              <span>Traducir Video</span>
+            </button>
+            <button
               className={`mode-btn ${mode === 'expert' ? 'active' : ''}`}
               onClick={() => setMode('expert')}
             >
@@ -122,20 +150,34 @@ function App() {
               <span className="btn-icon">🎥</span>
               <span>Cámara en Vivo</span>
             </button>
-            <button
-              className={`mode-btn ${mode === 'upload' ? 'active' : ''}`}
-              onClick={() => setMode('upload')}
-            >
-              <span className="btn-icon">📤</span>
-              <span>Subir Video</span>
-            </button>
           </div>
         </div>
       </header>
 
       {/* Main Dashboard */}
       <main className="dashboard">
-        {mode === 'expert' ? (
+        {mode === 'video' ? (
+          <div className="upload-container">
+            <div className="section-card full-width">
+              <div className="section-header">
+                <h2>🔮 Traducir Videos</h2>
+                <p>Sube uno o varios videos de señas para traducir</p>
+              </div>
+              <VideoTranslator
+                onInfer={handleVideoTranslation}
+                loading={loading}
+              />
+              {videoResults && (
+                <div className="results-section">
+                  <VideoPredictionResults 
+                    results={videoResults.results}
+                    errors={videoResults.errors}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        ) : mode === 'expert' ? (
           <ExpertPanel />
         ) : mode === 'sample' ? (
           <div className="upload-container">
@@ -190,25 +232,7 @@ function App() {
               </div>
             </div>
           </div>
-        ) : (
-          <div className="upload-container">
-            <div className="section-card full-width">
-              <div className="section-header">
-                <h2>📤 Subir Video</h2>
-                <p>Procesa un archivo de video completo</p>
-              </div>
-              <VideoUploader
-                onUpload={handleVideoInference}
-                loading={loading}
-              />
-              {result && (
-                <div className="results-section">
-                  <InferenceResult result={result} />
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        ) : null}
 
         {error && (
           <div className="error-toast">
@@ -222,7 +246,7 @@ function App() {
       {/* Footer */}
       <footer className="app-footer">
         <div className="footer-content">
-          <p>COMSIGNS v0.2.0 - Sistema de Traducción de Lengua de Señas</p>
+          <p>COMSIGNS v0.3.0 - Sistema de Traducción de Lengua de Señas</p>
           <div className="footer-links">
             <span>Powered by MediaPipe + PyTorch</span>
             <span>•</span>

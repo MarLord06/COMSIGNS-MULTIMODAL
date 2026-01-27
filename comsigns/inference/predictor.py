@@ -127,8 +127,9 @@ class Predictor:
         # Forward pass
         logits = self.model(hand, body, face, lengths)  # [B, num_classes]
         
-        # Get first item if batch
-        logits = logits[0]  # [num_classes]
+        # Get first item if batch and flatten to 1D
+        logits = logits[0]  # [num_classes] or could still be multi-dim
+        logits = logits.flatten()  # Ensure 1D: [num_classes]
         
         # Softmax for probabilities
         scores = F.softmax(logits, dim=0)  # [num_classes]
@@ -137,14 +138,19 @@ class Predictor:
         k = min(self.topk, self.num_classes)
         topk_scores, topk_indices = torch.topk(scores, k)
         
+        # Flatten results to ensure 1D (handles edge cases)
+        topk_scores = topk_scores.flatten()
+        topk_indices = topk_indices.flatten()
+        
         # Build top-k predictions
         topk_predictions = []
-        for rank, (score, class_id) in enumerate(
-            zip(topk_scores.tolist(), topk_indices.tolist()), 
-            start=1
-        ):
+        for rank in range(k):
+            # Extract scalar values robustly
+            score = topk_scores[rank].item()
+            class_id = topk_indices[rank].item()
+            
             topk_predictions.append(TopKPrediction(
-                rank=rank,
+                rank=rank + 1,
                 class_id=class_id,
                 class_name=self._get_class_name(class_id),
                 score=score

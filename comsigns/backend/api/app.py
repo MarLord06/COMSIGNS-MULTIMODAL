@@ -1,7 +1,7 @@
 """
 FastAPI application for ComSigns inference.
 
-Provides HTTP endpoints for running model inference on .pkl samples.
+Provides HTTP endpoints for running model inference on .pkl samples and videos.
 """
 
 import logging
@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 # Import routes
-from backend.api.routes import inference_router
+from backend.api.routes import inference_router, video_router
 
 # Configure logging
 logging.basicConfig(
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="ComSigns Inference API",
     description="API para inferencia de señas LSP-AEC",
-    version="0.2.0"
+    version="0.3.0"
 )
 
 # CORS middleware for frontend access
@@ -42,6 +42,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(inference_router)
+app.include_router(video_router)
 
 # ============================================================
 # Configuration
@@ -161,18 +162,31 @@ async def root():
     """Root endpoint with API info."""
     return {
         "name": "ComSigns Inference API",
-        "version": "0.2.0",
+        "version": "0.3.0",
         "endpoints": {
-            "POST /infer": "Run inference on .pkl sample",
-            "POST /infer/evaluate": "Run inference with decision engine",
-            "POST /infer/batch/evaluate": "Batch inference with decision engine",
-            "POST /api/inference/batch": "Batch inference with semantic sequence",
-            "GET /api/inference/sequence": "Get semantic sequence",
-            "POST /api/inference/sequence/reset": "Reset semantic sequence",
-            "GET /sequence": "Get current accepted sequence",
-            "POST /sequence/reset": "Reset sequence state",
-            "GET /health": "Health check",
-            "GET /info": "Model information"
+            "pkl_inference": {
+                "POST /infer": "Run inference on .pkl sample",
+                "POST /infer/evaluate": "Run inference with decision engine",
+                "POST /infer/batch/evaluate": "Batch inference with decision engine"
+            },
+            "video_inference": {
+                "POST /api/video/infer": "Run inference on video file(s)",
+                "POST /api/video/info": "Get video metadata",
+                "GET /api/video/config": "Get video processing config"
+            },
+            "batch_sequence": {
+                "POST /api/inference/batch": "Batch inference with semantic sequence",
+                "GET /api/inference/sequence": "Get semantic sequence",
+                "POST /api/inference/sequence/reset": "Reset semantic sequence"
+            },
+            "sequence": {
+                "GET /sequence": "Get current accepted sequence",
+                "POST /sequence/reset": "Reset sequence state"
+            },
+            "system": {
+                "GET /health": "Health check",
+                "GET /info": "Model information"
+            }
         }
     }
 
