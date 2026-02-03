@@ -67,12 +67,30 @@ class SemanticResolver:
         self._build_class_info_cache()
     
     def _build_class_info_cache(self) -> None:
-        """Pre-compute SemanticClassInfo for all classes."""
+        """Pre-compute SemanticClassInfo for all classes.
+        
+        Also validates the mapping and logs any resolution issues.
+        """
+        unresolved_glosses = []
+        
         for new_class_id, class_name in self.loader.new_class_names.items():
             info = self._parse_class_name(new_class_id, class_name)
             self._class_info_cache[new_class_id] = info
+            
+            # Track unresolved glosses (non-OTHER, where gloss == class_name)
+            if not info.is_other and info.gloss == class_name and info.old_class_id is not None:
+                unresolved_glosses.append((new_class_id, class_name, info.old_class_id))
         
-        logger.debug(f"Built class info cache: {len(self._class_info_cache)} entries")
+        logger.info(f"SemanticResolver: Built cache with {len(self._class_info_cache)} classes")
+        
+        if unresolved_glosses:
+            logger.warning(
+                f"SemanticResolver: {len(unresolved_glosses)} glosses could not be resolved from dict.json:"
+            )
+            for new_id, name, old_id in unresolved_glosses[:5]:  # Show first 5
+                logger.warning(f"  new_id={new_id} -> {name} (old_id={old_id} not in dict)")
+            if len(unresolved_glosses) > 5:
+                logger.warning(f"  ... and {len(unresolved_glosses) - 5} more")
     
     def _parse_class_name(self, new_class_id: int, class_name: str) -> SemanticClassInfo:
         """Parse a class name string into SemanticClassInfo.
