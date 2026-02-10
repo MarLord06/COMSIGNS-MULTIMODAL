@@ -26,6 +26,7 @@ PROJECT_ROOT = COMSIGNS_ROOT.parent  # /COMSIGNS-MULTIMODAL
 sys.path.insert(0, str(COMSIGNS_ROOT))
 
 import torch
+import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from core.data.datasets.aec import AECDataset
@@ -34,6 +35,16 @@ from core.data.splits import create_train_val_split
 from services.encoder import MultimodalEncoder
 from training import Trainer, TrainerConfig, SignLanguageClassifier
 from training import RemapConfig, ClassRemapper, RemappedDataset, compute_class_support
+from training import (
+    build_semantic_whitelist,
+    DictIdDataset,
+    FilteredGlossDataset,
+    LowSupportFilter,
+    AugmentConfig,
+    KeypointAugmenter,
+    RebalanceConfig,
+    RebalancedDataset
+)
 from training import ExperimentMetricsTracker, create_experiment_tracker
 from training import CheckpointManager, load_checkpoint_for_training
 from training.analysis import (
@@ -142,6 +153,84 @@ def parse_args():
         help='Minimum samples for HEAD bucket (default: 10)'
     )
     parser.add_argument(
+        '--semantic-closure',
+        action='store_true',
+        help='Enable semantic closure filtering using dict.json + class_mapping.json'
+    )
+    parser.add_argument(
+        '--class-mapping',
+        type=Path,
+        default=None,
+        help='Path to class_mapping.json for semantic closure (required if --semantic-closure)'
+    )
+    parser.add_argument(
+        '--use-dict-ids',
+        action='store_true',
+        help='Use dict.json old_id as class IDs (recommended for semantic compatibility)'
+    )
+    parser.add_argument(
+        '--min-class-samples',
+        type=int,
+        default=20,
+        help='Minimum samples per class (classes below are removed)'
+    )
+    parser.add_argument(
+        '--remove-low-support',
+        action='store_true',
+        help='Remove classes with < min-class-samples'
+    )
+    parser.add_argument(
+        '--rebalance',
+        action='store_true',
+        help='Enable dataset rebalancing with augmentation'
+    )
+    parser.add_argument(
+        '--other-max-multiplier',
+        type=float,
+        default=2.0,
+        help='Max OTHER samples = multiplier * median(non-OTHER)'
+    )
+    parser.add_argument(
+        '--other-max-cap',
+        type=int,
+        default=0,
+        help='Absolute cap for OTHER samples (0 = no cap)'
+    )
+    parser.add_argument(
+        '--augment',
+        action='store_true',
+        help='Enable keypoint augmentation for upsampling'
+    )
+    parser.add_argument(
+        '--augment-noise-std',
+        type=float,
+        default=0.01,
+        help='Gaussian noise std for keypoints (default: 0.01)'
+    )
+    parser.add_argument(
+        '--augment-time-shift',
+        type=int,
+        default=2,
+        help='Max temporal shift in frames (default: 2)'
+    )
+    parser.add_argument(
+        '--augment-mirror-prob',
+        type=float,
+        default=0.0,
+        help='Probability of left/right mirroring (default: 0.0)'
+    )
+    parser.add_argument(
+        '--class-weighting',
+        action='store_true',
+        help='Use class-weighted CrossEntropyLoss'
+    )
+    parser.add_argument(
+        '--other-penalty',
+        type=float,
+        default=1.2,
+        help='Multiplier for OTHER class weight (default: 1.2)'
+    )
+    parser.add_argument(
         '--resume',
         type=Path,
         default=None,
@@ -208,6 +297,58 @@ def main():
             split_file=args.split_file,
             split="val"
         )
+
+        # Use dict.json IDs for semantic compatibility (optional)
+        dict_path = args.dataset_path / "dict.json"
+        if args.use_dict_ids:
+            logger.info("Aplicando DictIdDataset (gloss_id = dict.json old_id)")
+            train_dataset = DictIdDataset(train_dataset, dict_path)
+            val_dataset = DictIdDataset(val_dataset, dict_path)
+
+        # Semantic closure filtering (optional)
+        if args.semantic_closure:
+            if args.class_mapping is None:
+                logger.error("--semantic-closure requiere --class-mapping")
+                sys.exit(1)
+            valid_old_ids, missing_gloss = build_semantic_whitelist(
+                dict_path=dict_path,
+                class_mapping_path=args.class_mapping
+            )
+            logger.info(
+                f"Semantic closure: {len(valid_old_ids)} clases válidas, "
+                f"missing_gloss={len(missing_gloss)}"
+            )
+            train_dataset = FilteredGlossDataset(
+                train_dataset,
+                valid_old_ids,
+                remap_ids=not args.use_dict_ids
+            )
+            val_dataset = FilteredGlossDataset(
+                val_dataset,
+                valid_old_ids,
+                remap_ids=not args.use_dict_ids
+            )
+
+        # Remove low-support classes (optional)
+        if args.remove_low_support:
+            allowed_ids, counts = LowSupportFilter.filter_by_min_support(
+                train_dataset,
+                min_support=args.min_class_samples
+            )
+            removed = sorted(set(counts.keys()) - set(allowed_ids))
+            logger.info(
+                f"Low-support filter: removed {len(removed)} classes (<{args.min_class_samples})"
+            )
+            train_dataset = FilteredGlossDataset(
+                train_dataset,
+                allowed_ids,
+                remap_ids=not args.use_dict_ids
+            )
+            val_dataset = FilteredGlossDataset(
+                val_dataset,
+                allowed_ids,
+                remap_ids=not args.use_dict_ids
+            )
         
         num_classes = len(train_dataset.gloss_to_id)
         
@@ -248,6 +389,30 @@ def main():
             num_classes = remapper.num_classes_remapped
             
             logger.info(f"  New num_classes: {num_classes}")
+
+        # Rebalancing (optional)
+        augmenter = None
+        if args.rebalance and args.augment:
+            augmenter = KeypointAugmenter(AugmentConfig(
+                time_shift=args.augment_time_shift,
+                noise_std=args.augment_noise_std,
+                mirror_prob=args.augment_mirror_prob
+            ))
+
+        if args.rebalance:
+            class_support = compute_class_support(train_dataset)
+            other_class_id = remapper.other_class_id if remapper is not None else None
+            rebalance_config = RebalanceConfig(
+                other_max_multiplier=args.other_max_multiplier,
+                other_max_cap=args.other_max_cap
+            )
+            train_dataset = RebalancedDataset(
+                train_dataset,
+                other_class_id=other_class_id,
+                class_counts=class_support,
+                augmenter=augmenter,
+                config=rebalance_config
+            )
         
         train_loader = DataLoader(
             train_dataset,
@@ -270,6 +435,48 @@ def main():
         # Cargar dataset completo
         dataset = AECDataset(args.dataset_path)
         num_classes = len(dataset.gloss_to_id)
+
+        # Use dict.json IDs for semantic compatibility (optional)
+        dict_path = args.dataset_path / "dict.json"
+        if args.use_dict_ids:
+            logger.info("Aplicando DictIdDataset (gloss_id = dict.json old_id)")
+            dataset = DictIdDataset(dataset, dict_path)
+
+        # Semantic closure filtering (optional)
+        if args.semantic_closure:
+            if args.class_mapping is None:
+                logger.error("--semantic-closure requiere --class-mapping")
+                sys.exit(1)
+            valid_old_ids, missing_gloss = build_semantic_whitelist(
+                dict_path=dict_path,
+                class_mapping_path=args.class_mapping
+            )
+            logger.info(
+                f"Semantic closure: {len(valid_old_ids)} clases válidas, "
+                f"missing_gloss={len(missing_gloss)}"
+            )
+            dataset = FilteredGlossDataset(
+                dataset,
+                valid_old_ids,
+                remap_ids=not args.use_dict_ids
+            )
+
+        # Remove low-support classes (optional)
+        if args.remove_low_support:
+            allowed_ids, counts = LowSupportFilter.filter_by_min_support(
+                dataset,
+                min_support=args.min_class_samples
+            )
+            removed = sorted(set(counts.keys()) - set(allowed_ids))
+            logger.info(
+                f"Low-support filter: removed {len(removed)} classes (<{args.min_class_samples})"
+            )
+            dataset = FilteredGlossDataset(
+                dataset,
+                allowed_ids,
+                remap_ids=not args.use_dict_ids
+            )
+            num_classes = len(dataset.gloss_to_id)
         
         logger.info(f"  Muestras totales: {len(dataset)}")
         logger.info(f"  Clases (glosas): {num_classes}")
@@ -286,6 +493,53 @@ def main():
             )
             logger.info(f"  Train: {len(train_set)} muestras")
             logger.info(f"  Val: {len(val_set)} muestras")
+
+            # Apply TAIL → OTHER if enabled
+            if args.tail_to_other:
+                logger.info(f"\n  Applying TAIL → OTHER remapping (head_threshold={args.head_threshold})...")
+                train_support = compute_class_support(train_set)
+                remap_config = RemapConfig(
+                    strategy="tail_to_other",
+                    head_threshold=args.head_threshold
+                )
+                remapper = ClassRemapper(remap_config)
+                remapper.fit(train_support, dict(train_set.gloss_to_id))
+
+                summary = remapper.get_config_summary()
+                logger.info(f"  Original classes: {summary['num_classes_original']}")
+                logger.info(f"  Remapped classes: {summary['num_classes_remapped']}")
+                logger.info(f"  HEAD: {summary['head_classes']} classes")
+                logger.info(f"  MID: {summary['mid_classes']} classes")
+                logger.info(f"  TAIL → OTHER: {summary['tail_classes']} classes collapsed")
+                logger.info(f"  Samples in OTHER: {summary['samples_in_other']}")
+
+                train_set = RemappedDataset(train_set, remapper)
+                val_set = RemappedDataset(val_set, remapper)
+                num_classes = remapper.num_classes_remapped
+
+            # Rebalancing (optional)
+            augmenter = None
+            if args.rebalance and args.augment:
+                augmenter = KeypointAugmenter(AugmentConfig(
+                    time_shift=args.augment_time_shift,
+                    noise_std=args.augment_noise_std,
+                    mirror_prob=args.augment_mirror_prob
+                ))
+
+            if args.rebalance:
+                class_support = compute_class_support(train_set)
+                other_class_id = remapper.other_class_id if remapper is not None else None
+                rebalance_config = RebalanceConfig(
+                    other_max_multiplier=args.other_max_multiplier,
+                    other_max_cap=args.other_max_cap
+                )
+                train_set = RebalancedDataset(
+                    train_set,
+                    other_class_id=other_class_id,
+                    class_counts=class_support,
+                    augmenter=augmenter,
+                    config=rebalance_config
+                )
             
             train_loader = DataLoader(
                 train_set,
@@ -306,6 +560,52 @@ def main():
             )
         else:
             logger.info("Validación desactivada - usando todo el dataset para training")
+            # Apply TAIL → OTHER if enabled
+            if args.tail_to_other:
+                logger.info(f"\n  Applying TAIL → OTHER remapping (head_threshold={args.head_threshold})...")
+                train_support = compute_class_support(dataset)
+                remap_config = RemapConfig(
+                    strategy="tail_to_other",
+                    head_threshold=args.head_threshold
+                )
+                remapper = ClassRemapper(remap_config)
+                remapper.fit(train_support, dict(dataset.gloss_to_id))
+
+                summary = remapper.get_config_summary()
+                logger.info(f"  Original classes: {summary['num_classes_original']}")
+                logger.info(f"  Remapped classes: {summary['num_classes_remapped']}")
+                logger.info(f"  HEAD: {summary['head_classes']} classes")
+                logger.info(f"  MID: {summary['mid_classes']} classes")
+                logger.info(f"  TAIL → OTHER: {summary['tail_classes']} classes collapsed")
+                logger.info(f"  Samples in OTHER: {summary['samples_in_other']}")
+
+                dataset = RemappedDataset(dataset, remapper)
+                num_classes = remapper.num_classes_remapped
+
+            # Rebalancing (optional)
+            augmenter = None
+            if args.rebalance and args.augment:
+                augmenter = KeypointAugmenter(AugmentConfig(
+                    time_shift=args.augment_time_shift,
+                    noise_std=args.augment_noise_std,
+                    mirror_prob=args.augment_mirror_prob
+                ))
+
+            if args.rebalance:
+                class_support = compute_class_support(dataset)
+                other_class_id = remapper.other_class_id if remapper is not None else None
+                rebalance_config = RebalanceConfig(
+                    other_max_multiplier=args.other_max_multiplier,
+                    other_max_cap=args.other_max_cap
+                )
+                dataset = RebalancedDataset(
+                    dataset,
+                    other_class_id=other_class_id,
+                    class_counts=class_support,
+                    augmenter=augmenter,
+                    config=rebalance_config
+                )
+
             train_loader = DataLoader(
                 dataset,
                 batch_size=args.batch_size,
@@ -372,9 +672,80 @@ def main():
     logger.info(f"  Validation: {config.validate}")
     
     # =========================================================================
+    # 4.1 Class-Weighted Loss (if enabled)
+    # =========================================================================
+    loss_fn = None
+    
+    if args.class_weighting:
+        logger.info("\nCalculando pesos de clases para la pérdida...")
+        
+        # Get final training dataset (after all transforms)
+        if args.stratified and train_dataset is not None:
+            # Try to get the underlying dataset
+            final_train_ds = train_dataset
+        else:
+            final_train_ds = dataset
+        
+        # Compute class support from final dataset
+        final_support = compute_class_support(final_train_ds)
+        
+        # Compute inverse frequency weights
+        total_samples = sum(final_support.values())
+        class_weights = torch.zeros(num_classes, dtype=torch.float32)
+        
+        for class_id in range(num_classes):
+            support = final_support.get(class_id, 0)
+            if support > 0:
+                # Inverse frequency weighting: w_i = N / (n_classes * n_i)
+                class_weights[class_id] = total_samples / (num_classes * support)
+            else:
+                # Classes with no samples get weight 1.0 (shouldn't affect training)
+                class_weights[class_id] = 1.0
+        
+        # Apply OTHER penalty if configured
+        if args.other_penalty != 1.0 and remapper is not None:
+            # Find the OTHER class ID
+            other_class_id = remapper.other_class_id
+            if other_class_id is not None:
+                original_weight = class_weights[other_class_id].item()
+                class_weights[other_class_id] *= args.other_penalty
+                logger.info(f"  Penalización OTHER (class_id={other_class_id}): "
+                           f"{original_weight:.4f} → {class_weights[other_class_id].item():.4f}")
+        
+        # Move weights to device (align with training device)
+        device = config.get_torch_device()
+        class_weights = class_weights.to(device)
+        
+        # Create weighted loss
+        if device.type == "mps":
+            class WeightedCrossEntropyLoss(nn.Module):
+                def __init__(self, weight: torch.Tensor, reduction: str = "mean"):
+                    super().__init__()
+                    self.register_buffer("weight", weight)
+                    self.reduction = reduction
+
+                def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+                    log_probs = torch.log_softmax(logits, dim=1)
+                    nll = -log_probs.gather(1, targets.view(-1, 1)).squeeze(1)
+                    if self.weight is not None:
+                        nll = nll * self.weight[targets]
+                    if self.reduction == "sum":
+                        return nll.sum()
+                    return nll.mean()
+
+            loss_fn = WeightedCrossEntropyLoss(weight=class_weights)
+        else:
+            loss_fn = nn.CrossEntropyLoss(weight=class_weights)
+        
+        # Log weight statistics
+        logger.info(f"  Total samples: {total_samples}")
+        logger.info(f"  Weight range: [{class_weights.min().item():.4f}, {class_weights.max().item():.4f}]")
+        logger.info(f"  Weight mean: {class_weights.mean().item():.4f}")
+    
+    # =========================================================================
     # 5. Entrenar con Checkpointing
     # =========================================================================
-    trainer = Trainer(model, config, num_classes=num_classes)
+    trainer = Trainer(model, config, num_classes=num_classes, loss_fn=loss_fn)
     
     # Validar que todo funciona antes de entrenar
     logger.info("\nValidando setup...")
@@ -415,6 +786,19 @@ def main():
     if args.tail_to_other and remapper is not None:
         remapper.save(output_dir / "class_mapping.json")
         logger.info(f"  Class mapping saved to: {output_dir / 'class_mapping.json'}")
+    
+    # =========================================================================
+    # Export class_index.json (new_id → gloss mapping for semantic resolution)
+    # =========================================================================
+    import json
+    class_index = {}
+    for i, name in enumerate(class_names):
+        class_index[str(i)] = name
+    
+    class_index_path = output_dir / "class_index.json"
+    with open(class_index_path, 'w', encoding='utf-8') as f:
+        json.dump(class_index, f, ensure_ascii=False, indent=2)
+    logger.info(f"  Class index saved to: {class_index_path}")
     
     logger.info(f"  Output directory: {output_dir}")
     if args.eval:
@@ -771,10 +1155,91 @@ def main():
             "head_threshold": args.head_threshold,
             "num_classes": num_classes,
             "seed": args.seed,
-            "completed_at": datetime.now().isoformat()
+            "completed_at": datetime.now().isoformat(),
+            # New semantic closure params
+            "semantic_closure": args.semantic_closure,
+            "use_dict_ids": args.use_dict_ids,
+            "min_class_samples": args.min_class_samples,
+            "remove_low_support": args.remove_low_support,
+            # Rebalancing params
+            "rebalance": args.rebalance,
+            "other_max_multiplier": args.other_max_multiplier,
+            "other_max_cap": args.other_max_cap if hasattr(args, 'other_max_cap') else None,
+            # Augmentation params
+            "augment": args.augment,
+            "augment_noise_std": args.augment_noise_std,
+            "augment_time_shift": args.augment_time_shift,
+            "augment_mirror_prob": args.augment_mirror_prob,
+            # Class weighting params
+            "class_weighting": args.class_weighting,
+            "other_penalty": args.other_penalty
         }
         checkpoint_manager.save_training_state(training_state)
         logger.info(f"  Training state saved to: {output_dir / 'training_state.json'}")
+        
+        # Generate training report markdown
+        report_lines = [
+            "# Training Report",
+            "",
+            f"**Completed at:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            "",
+            "## Training Configuration",
+            "",
+            f"- **Epochs:** {args.epochs}",
+            f"- **Batch Size:** {args.batch_size}",
+            f"- **Learning Rate:** {args.lr}",
+            f"- **Device:** {args.device}",
+            f"- **Seed:** {args.seed}",
+            "",
+            "## Class Remapping",
+            "",
+            f"- **TAIL → OTHER:** {args.tail_to_other}",
+            f"- **HEAD threshold:** {args.head_threshold}",
+            f"- **Number of classes:** {num_classes}",
+            "",
+            "## Semantic Closure",
+            "",
+            f"- **Enabled:** {args.semantic_closure}",
+            f"- **Use dict IDs:** {args.use_dict_ids}",
+            f"- **Min class samples:** {args.min_class_samples}",
+            f"- **Remove low support:** {args.remove_low_support}",
+            "",
+            "## Rebalancing",
+            "",
+            f"- **Enabled:** {args.rebalance}",
+            f"- **OTHER max multiplier:** {args.other_max_multiplier}",
+            f"- **OTHER max cap:** {getattr(args, 'other_max_cap', 'N/A')}",
+            "",
+            "## Augmentation",
+            "",
+            f"- **Enabled:** {args.augment}",
+            f"- **Noise std:** {args.augment_noise_std}",
+            f"- **Time shift:** {args.augment_time_shift}",
+            f"- **Mirror prob:** {args.augment_mirror_prob}",
+            "",
+            "## Class Weighting",
+            "",
+            f"- **Enabled:** {args.class_weighting}",
+            f"- **OTHER penalty:** {args.other_penalty}",
+            "",
+            "## Results",
+            "",
+            f"- **Final train loss:** {history['train_loss'][-1]:.4f}" if history['train_loss'] else "- **Final train loss:** N/A",
+            f"- **Final val loss:** {history['val_loss'][-1]:.4f}" if history['val_loss'] else "- **Final val loss:** N/A",
+            "",
+            "## Artifacts",
+            "",
+            f"- `best.pt` - Best model checkpoint",
+            f"- `class_mapping.json` - Class remapping configuration",
+            f"- `class_index.json` - New class ID to gloss mapping",
+            f"- `training_state.json` - Full training state",
+            "",
+        ]
+        
+        report_path = output_dir / "training_report.md"
+        with open(report_path, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(report_lines))
+        logger.info(f"  Training report saved to: {report_path}")
     
     return 0
 

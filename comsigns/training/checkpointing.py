@@ -507,7 +507,7 @@ class CheckpointManager:
         if not checkpoint_path.exists():
             raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
         
-        checkpoint = torch.load(checkpoint_path, map_location="cpu")
+        checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
         logger.info(f"Loaded checkpoint from {checkpoint_path}")
         
         return checkpoint
@@ -526,7 +526,7 @@ class CheckpointManager:
         if not best_path.exists():
             raise FileNotFoundError(f"Best checkpoint not found: {best_path}")
         
-        checkpoint = torch.load(best_path, map_location="cpu")
+        checkpoint = torch.load(best_path, map_location="cpu", weights_only=False)
         logger.info(f"Loaded best checkpoint (epoch {checkpoint['epoch']})")
         
         return checkpoint
@@ -643,7 +643,7 @@ def load_checkpoint_for_inference(
     Returns:
         Model with loaded weights, in eval mode
     """
-    checkpoint = torch.load(checkpoint_path, map_location=device)
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     model.load_state_dict(checkpoint["model_state"])
     model.to(device)
     model.eval()
@@ -672,7 +672,7 @@ def load_checkpoint_for_training(
     Returns:
         Next epoch number (checkpoint epoch + 1)
     """
-    checkpoint = torch.load(checkpoint_path, map_location=device)
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     
     model.load_state_dict(checkpoint["model_state"])
     model.to(device)

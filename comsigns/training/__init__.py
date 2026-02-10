@@ -35,6 +35,31 @@ from .experiment_metrics import (
     create_experiment_tracker,
     compare_experiments
 )
+from .semantic_closure import (
+    SemanticClosureReport,
+    load_dict_mapping,
+    load_class_mapping_old_ids,
+    build_semantic_whitelist,
+    DictIdDataset,
+    FilteredGlossDataset,
+    LowSupportFilter
+)
+from .augmentation import AugmentConfig, KeypointAugmenter
+from .rebalance import RebalanceConfig, RebalancedDataset
+from .gloss_cleaner import (
+    GlossCleaner,
+    CleanedGlossDataset,
+    GlossCleaningReport
+)
+from .advanced_metrics import (
+    LearnedWordCriteria,
+    WordMetrics,
+    LearnedWordsReport,
+    RejectionMetrics,
+    BucketMetrics as AdvancedBucketMetrics,
+    CompositeScore,
+    AdvancedMetricsCalculator
+)
 from .checkpointing import (
     CheckpointMetrics,
     BestModelInfo,
@@ -74,4 +99,16 @@ __all__ = [
     "CheckpointManager",
     "load_checkpoint_for_inference",
     "load_checkpoint_for_training",
+    # Gloss Cleaner
+    "GlossCleaner",
+    "CleanedGlossDataset",
+    "GlossCleaningReport",
+    # Advanced Metrics
+    "LearnedWordCriteria",
+    "WordMetrics",
+    "LearnedWordsReport",
+    "RejectionMetrics",
+    "AdvancedBucketMetrics",
+    "CompositeScore",
+    "AdvancedMetricsCalculator",
 ]
