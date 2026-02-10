@@ -52,11 +52,8 @@ from pathlib import Path
 
 import torch
 
-# Add parent to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from inference import InferenceLoader, Predictor
-from inference.types import PredictionResult
+from services.inference import InferenceLoader, Predictor
+from services.inference.types import PredictionResult
 
 
 logging.basicConfig(

@@ -64,9 +64,9 @@ class EncoderReadySample:
     """
     gloss: str
     gloss_id: int
-    hand_keypoints: np.ndarray  # [T, 168]
-    body_keypoints: np.ndarray  # [T, 132]
-    face_keypoints: np.ndarray  # [T, 1872]
+    hand_keypoints: np.ndarray  # [T, 126] (2 hands × 21 keypoints × 3 values [x,y,z])
+    body_keypoints: np.ndarray  # [T, 99]  (33 keypoints × 3 values)
+    face_keypoints: np.ndarray  # [T, 1404] (468 keypoints × 3 values)
     unique_name: str
     metadata: Optional[Dict[str, Any]] = None
     

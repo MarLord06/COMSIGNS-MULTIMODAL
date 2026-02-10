@@ -18,15 +18,20 @@ def keypoints_to_tensor(
     pad_value: float = 0.0
 ) -> torch.Tensor:
     """
-    Convierte una lista de keypoints a tensor con tamaño fijo
+    Convierte una lista de keypoints a tensor con tamaño fijo.
+
+    Notas:
+    - Cada keypoint debe ser [x, y, z]. Cualquier canal extra (p.ej. confidence/visibility)
+      será ignorado por esta función.
+    - El tensor resultante está aplanado y tiene forma (num_keypoints * 3,) o (expected_size,)
 
     Args:
-        keypoints: Lista de keypoints [[x, y, z, confidence], ...]
-        expected_size: Tamaño esperado del tensor aplanado (num_keypoints * 4)
+        keypoints: Lista de keypoints [[x, y, z], ...] (o con columas extra que serán truncadas)
+        expected_size: Tamaño esperado del tensor aplanado (num_keypoints * 3)
         pad_value: Valor para padding si hay menos keypoints
 
     Returns:
-        Tensor aplanado de forma (expected_size,) o (num_keypoints * 4,)
+        Tensor aplanado de forma (expected_size,) o (num_keypoints * 3,)
     """
     if not keypoints:
         # Si no hay keypoints, retornar tensor de ceros del tamaño esperado
@@ -38,17 +43,28 @@ def keypoints_to_tensor(
     # Convertir a numpy y luego a tensor
     kp_array = np.array(keypoints, dtype=np.float32)
 
-    # Asegurar que tenga 4 dimensiones
-    if len(kp_array.shape) == 1:
-        # Si es 1D, convertir a 2D
-        kp_array = kp_array.reshape(-1, 4)
-    elif kp_array.shape[1] < 4:
-        # Padding si falta alguna dimensión
-        padded = np.zeros((kp_array.shape[0], 4), dtype=np.float32)
+
+    # Handle 1D flattened legacy arrays and ensure we end with shape (num_points, 3)
+    if kp_array.ndim == 1:
+        L = kp_array.shape[0]
+        if L % 4 == 0:
+            # Legacy format: flattened [x,y,z,conf] per point
+            kp_array = kp_array.reshape(-1, 4)
+        elif L % 3 == 0:
+            # New format: flattened [x,y,z] per point
+            kp_array = kp_array.reshape(-1, 3)
+        else:
+            raise ValueError(f"Unexpected flattened keypoints length: {L}")
+
+    # If 2D, normalize columns: keep only first 3 (x,y,z). If fewer than 3, pad zeros.
+    if kp_array.shape[1] >= 3:
+        kp_array = kp_array[:, :3]
+    else:
+        padded = np.zeros((kp_array.shape[0], 3), dtype=np.float32)
         padded[:, :kp_array.shape[1]] = kp_array
         kp_array = padded
 
-    # Aplanar para tener (num_keypoints * 4,)
+    # Aplanar para tener (num_keypoints * 3,)
     kp_flat = kp_array.flatten()
 
     # Si se especifica un tamaño esperado, hacer padding o truncar
@@ -91,10 +107,10 @@ def feature_clip_to_tensors(
     body_tensors = []
     face_tensors = []
 
-    # Tamaños fijos esperados para cada tipo de keypoint
-    hand_expected_size = max_hands * hand_keypoints_per_hand * 4  # 2 manos * 21 * 4 = 168
-    body_expected_size = 33 * 4  # 33 keypoints * 4 = 132
-    face_expected_size = 468 * 4  # 468 keypoints * 4 = 1872
+    # Tamaños fijos esperados para cada tipo de keypoint (3 canales: x,y,z)
+    hand_expected_size = max_hands * hand_keypoints_per_hand * 3  # 2 manos * 21 * 3 = 126
+    body_expected_size = 33 * 3  # 33 keypoints * 3 = 99
+    face_expected_size = 468 * 3  # 468 keypoints * 3 = 1404
 
     for frame in feature_clip.frames:
         # Procesar keypoints de manos con tamaño fijo

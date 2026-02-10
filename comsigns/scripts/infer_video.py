@@ -57,39 +57,31 @@ def extract_keypoints_from_video(video_path: Path) -> dict:
     face_keypoints = []
     
     for frame in feature_clip.frames:
-        # Flatten hand keypoints (2 hands * 21 keypoints * 4 values = 168)
-        hand_vec = np.zeros(168, dtype=np.float32)
+        # Flatten hand keypoints (2 hands * 21 keypoints * 3 values = 126)
+        hand_vec = np.zeros(126, dtype=np.float32)
         if frame.hand_keypoints:
             for i, kp in enumerate(frame.hand_keypoints[:42]):  # Max 2 hands * 21
-                if len(kp) >= 4:
-                    hand_vec[i*4:i*4+4] = kp[:4]
-                elif len(kp) >= 3:
-                    hand_vec[i*4:i*4+3] = kp[:3]
-                    hand_vec[i*4+3] = 1.0
+                # Tomar solo x, y, z
+                if len(kp) >= 3:
+                    hand_vec[i*3:i*3+3] = kp[:3]
         hand_keypoints.append(hand_vec)
-        
-        # Flatten body keypoints (33 keypoints * 4 values = 132)
-        body_vec = np.zeros(132, dtype=np.float32)
+
+        # Flatten body keypoints (33 keypoints * 3 values = 99)
+        body_vec = np.zeros(99, dtype=np.float32)
         if frame.body_keypoints:
             for i, kp in enumerate(frame.body_keypoints[:33]):
-                if len(kp) >= 4:
-                    body_vec[i*4:i*4+4] = kp[:4]
-                elif len(kp) >= 3:
-                    body_vec[i*4:i*4+3] = kp[:3]
-                    body_vec[i*4+3] = 1.0
+                if len(kp) >= 3:
+                    body_vec[i*3:i*3+3] = kp[:3]
         body_keypoints.append(body_vec)
-        
-        # Flatten face keypoints (468 keypoints * 4 values = 1872)
-        face_vec = np.zeros(1872, dtype=np.float32)
+
+        # Flatten face keypoints (468 keypoints * 3 values = 1404)
+        face_vec = np.zeros(1404, dtype=np.float32)
         if frame.face_keypoints:
             for i, kp in enumerate(frame.face_keypoints[:468]):
-                if len(kp) >= 4:
-                    face_vec[i*4:i*4+4] = kp[:4]
-                elif len(kp) >= 3:
-                    face_vec[i*4:i*4+3] = kp[:3]
-                    face_vec[i*4+3] = 1.0
+                if len(kp) >= 3:
+                    face_vec[i*3:i*3+3] = kp[:3]
         face_keypoints.append(face_vec)
-    
+
     return {
         "hand": np.array(hand_keypoints, dtype=np.float32),
         "body": np.array(body_keypoints, dtype=np.float32),

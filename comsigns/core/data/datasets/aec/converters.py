@@ -14,49 +14,45 @@ AEC Format (per frame):
         'face': {'x': [468 values], 'y': [468 values]}
     }
 
-Encoder Format:
-    - hand: [168] = 2 hands × 21 keypoints × 4 values [x, y, z, confidence]
-    - body: [132] = 33 keypoints × 4 values [x, y, z, confidence]
-    - face: [1872] = 468 keypoints × 4 values [x, y, z, confidence]
+Encoder Format (updated):
+    - hand: [126] = 2 hands × 21 keypoints × 3 values [x, y, z]
+    - body: [99] = 33 keypoints × 3 values [x, y, z]
+    - face: [1404] = 468 keypoints × 3 values [x, y, z]
 """
 
 import numpy as np
 from typing import Dict, List
 
 
-# Default padding values for missing z and confidence
+# Default padding value for missing z
 DEFAULT_Z = 0.0
-DEFAULT_CONFIDENCE = 1.0
 
 
-def _xy_to_xyconf(
+def _xy_to_xyz(
     x_values: List[float],
     y_values: List[float],
-    z_value: float = DEFAULT_Z,
-    confidence: float = DEFAULT_CONFIDENCE
+    z_value: float = DEFAULT_Z
 ) -> np.ndarray:
     """
-    Convert separate x, y lists to flattened [x, y, z, conf, ...] array.
-    
+    Convert separate x, y lists to flattened [x, y, z, ...] array.
+
     Args:
         x_values: List of x coordinates
         y_values: List of y coordinates
         z_value: Value to use for z (depth), default 0.0
-        confidence: Value to use for confidence, default 1.0
-    
+
     Returns:
-        Flattened numpy array: [x0, y0, z, conf, x1, y1, z, conf, ...]
+        Flattened numpy array: [x0, y0, z, x1, y1, z, ...]
     """
     num_points = len(x_values)
-    result = np.zeros(num_points * 4, dtype=np.float32)
-    
+    result = np.zeros(num_points * 3, dtype=np.float32)
+
     for i in range(num_points):
-        base_idx = i * 4
+        base_idx = i * 3
         result[base_idx] = x_values[i]
         result[base_idx + 1] = y_values[i]
         result[base_idx + 2] = z_value
-        result[base_idx + 3] = confidence
-    
+
     return result
 
 
@@ -80,21 +76,21 @@ def aec_frame_to_encoder_arrays(frame: Dict) -> Dict[str, np.ndarray]:
         z = 0.0 (depth unknown in AEC)
         confidence = 1.0 (assume valid keypoints)
     """
-    # Process hands: concatenate left_hand + right_hand
+    # Process hands: concatenate left_hand + right_hand (each => 21 * 3)
     left_hand = frame.get('left_hand', {'x': [0.0] * 21, 'y': [0.0] * 21})
     right_hand = frame.get('right_hand', {'x': [0.0] * 21, 'y': [0.0] * 21})
-    
-    left_array = _xy_to_xyconf(left_hand['x'], left_hand['y'])
-    right_array = _xy_to_xyconf(right_hand['x'], right_hand['y'])
-    hand_array = np.concatenate([left_array, right_array])  # [168]
-    
-    # Process body (pose)
+
+    left_array = _xy_to_xyz(left_hand['x'], left_hand['y'])
+    right_array = _xy_to_xyz(right_hand['x'], right_hand['y'])
+    hand_array = np.concatenate([left_array, right_array])  # [126]
+
+    # Process body (pose) -> 33 * 3
     pose = frame.get('pose', {'x': [0.0] * 33, 'y': [0.0] * 33})
-    body_array = _xy_to_xyconf(pose['x'], pose['y'])  # [132]
-    
-    # Process face
+    body_array = _xy_to_xyz(pose['x'], pose['y'])  # [99]
+
+    # Process face -> 468 * 3
     face = frame.get('face', {'x': [0.0] * 468, 'y': [0.0] * 468})
-    face_array = _xy_to_xyconf(face['x'], face['y'])  # [1872]
+    face_array = _xy_to_xyz(face['x'], face['y'])  # [1404]
     
     return {
         'hand': hand_array,
@@ -127,9 +123,9 @@ def aec_keypoints_to_encoder_format(frames: List[Dict]) -> Dict[str, np.ndarray]
     T = len(frames)
     
     # Pre-allocate arrays
-    hand_array = np.zeros((T, 168), dtype=np.float32)
-    body_array = np.zeros((T, 132), dtype=np.float32)
-    face_array = np.zeros((T, 1872), dtype=np.float32)
+    hand_array = np.zeros((T, 126), dtype=np.float32)
+    body_array = np.zeros((T, 99), dtype=np.float32)
+    face_array = np.zeros((T, 1404), dtype=np.float32)
     
     for t, frame in enumerate(frames):
         converted = aec_frame_to_encoder_arrays(frame)

@@ -18,7 +18,7 @@ class HandBranch(nn.Module):
 
     def __init__(
         self,
-        input_dim: int = 21 * 4,  # 21 keypoints * [x, y, z, confidence]
+        input_dim: int = 21 * 3,  # 21 keypoints * [x, y, z]
         hidden_dim: int = 256,
         num_layers: int = 2,
         dropout: float = 0.1
@@ -79,7 +79,7 @@ class BodyBranch(nn.Module):
 
     def __init__(
         self,
-        input_dim: int = 33 * 4,  # 33 keypoints * [x, y, z, visibility]
+        input_dim: int = 33 * 3,  # 33 keypoints * [x, y, z]
         hidden_dim: int = 256,
         num_layers: int = 2,
         dropout: float = 0.1
@@ -134,7 +134,7 @@ class FaceBranch(nn.Module):
 
     def __init__(
         self,
-        input_dim: int = 468 * 4,  # 468 keypoints * [x, y, z, confidence]
+        input_dim: int = 468 * 3,  # 468 keypoints * [x, y, z]
         hidden_dim: int = 256,
         num_layers: int = 2,
         dropout: float = 0.1
@@ -195,9 +195,9 @@ class MultimodalEncoder(nn.Module):
 
     def __init__(
         self,
-        hand_input_dim: int = 21 * 4 * 2,  # 2 manos * 21 keypoints * 4 valores
-        body_input_dim: int = 33 * 4,
-        face_input_dim: int = 468 * 4,
+        hand_input_dim: int = 21 * 3 * 2,  # 2 manos * 21 keypoints * 3 valores
+        body_input_dim: int = 33 * 3,
+        face_input_dim: int = 468 * 3,
         hidden_dim: int = 256,
         output_dim: int = 512,
         num_layers: int = 2,
@@ -207,9 +207,9 @@ class MultimodalEncoder(nn.Module):
         Inicializa el encoder multimodal
 
         Args:
-            hand_input_dim: Dimensión de entrada de manos (por defecto 168 para 2 manos)
-            body_input_dim: Dimensión de entrada del cuerpo (132)
-            face_input_dim: Dimensión de entrada del rostro (1872)
+            hand_input_dim: Dimensión de entrada de manos (por defecto 126 para 2 manos)
+            body_input_dim: Dimensión de entrada del cuerpo (99)
+            face_input_dim: Dimensión de entrada del rostro (1404)
             hidden_dim: Dimensión oculta de cada rama
             output_dim: Dimensión de salida final
             num_layers: Número de capas LSTM por rama

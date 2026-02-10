@@ -230,11 +230,12 @@ class KeypointExtractor:
                 for landmark in hand_landmarks:
                     # x, y, z están normalizados [0, 1]
                     # z es la profundidad relativa
+                    # NOTE: We deliberately DO NOT include a confidence channel here.
+                    # The model input should contain only [x, y, z] per landmark.
                     keypoints.append([
                         landmark.x,
                         landmark.y,
-                        landmark.z,
-                        1.0  # MediaPipe no proporciona confidence por landmark
+                        landmark.z
                     ])
 
         return keypoints
@@ -257,11 +258,13 @@ class KeypointExtractor:
         if detection_result.pose_landmarks:
             for landmark in detection_result.pose_landmarks[0]:
                 # MediaPipe Pose tiene 33 landmarks
+                # We DO NOT include `visibility` as a feature channel for the model input.
+                # If needed, visibility can be used internally for filtering/masking,
+                # but it must not become part of the per-landmark vector sent to the model.
                 keypoints.append([
                     landmark.x,
                     landmark.y,
-                    landmark.z,
-                    landmark.visibility  # MediaPipe usa visibility en lugar de confidence
+                    landmark.z
                 ])
 
         return keypoints
@@ -286,11 +289,11 @@ class KeypointExtractor:
             face_landmarks = detection_result.face_landmarks[0]
             for landmark in face_landmarks:
                 # MediaPipe Face Landmarker tiene 468 landmarks
+                # Do not include a constant confidence channel; output [x, y, z].
                 keypoints.append([
                     landmark.x,
                     landmark.y,
-                    landmark.z,
-                    1.0  # Face Landmarker no proporciona confidence
+                    landmark.z
                 ])
 
         return keypoints
