@@ -1,4 +1,20 @@
-# 🚀 Guía Completa de Inicio - COMSIGNS
+# 🚀 Guía Completa de Inicio — COMSIGNS
+
+> Guía paso a paso para instalar, configurar y ejecutar el sistema COMSIGNS.
+
+---
+
+## 📖 Navegación
+
+| Documento | Descripción |
+|-----------|-------------|
+| [🤟 README Principal](README.md) | Índice general del proyecto |
+| [🧠 Arquitectura del Modelo](docs/MODEL_ARCHITECTURE.md) | Encoder multimodal y clasificador |
+| [🚀 Inicio Rápido](comsigns/QUICKSTART.md) | Versión resumida de esta guía |
+| [🔧 Setup MediaPipe](comsigns/MODELS_SETUP.md) | Configuración de modelos MediaPipe |
+| [👤 Guía de Usuario](docs/USER_GUIDE.md) | Inferencia, troubleshooting |
+
+---
 
 ## 📋 Resumen del Sistema
 
@@ -6,7 +22,7 @@ COMSIGNS es un sistema completo de traducción de lenguaje de señas en tiempo r
 
 - ✅ **Captura en tiempo real** vía webcam con WebSocket
 - ✅ **Procesamiento de video** con MediaPipe (keypoints)
-- ✅ **Encoder multimodal** (manos, cuerpo, rostro)
+- ✅ **Encoder multimodal** (manos, cuerpo, rostro) — ver [Arquitectura](docs/MODEL_ARCHITECTURE.md)
 - ✅ **Glosador** (embeddings → glosas)
 - ✅ **Traductor** (glosas → español)
 - ✅ **Frontend React** con modo cámara y subida de video
@@ -25,6 +41,8 @@ COMSIGNS-MULTIMODAL/
 │   │   ├── encoder/          # Modelo multimodal
 │   │   ├── glosador/         # Embeddings → Glosas
 │   │   └── translator/       # Glosas → Español
+│   ├── training/             # Trainer, clasificador, métricas
+│   ├── scripts/              # Scripts CLI
 │   ├── web/                  # Frontend React
 │   ├── config.yaml           # Configuración
 │   ├── run_api.py            # Script para iniciar API
@@ -34,6 +52,7 @@ COMSIGNS-MULTIMODAL/
 │       ├── face_landmarker.task
 │       ├── hand_landmarker.task
 │       └── pose_landmarker_lite.task
+├── docs/                     # Documentación técnica
 └── README.md
 ```
 
@@ -50,7 +69,7 @@ COMSIGNS-MULTIMODAL/
 ### 2. Instalar Dependencias Python
 
 ```bash
-cd /home/srchaoz/ChaozDev/COMSIGNS-MULTIMODAL/comsigns
+cd comsigns
 
 # Crear entorno virtual (recomendado)
 python -m venv venv
@@ -68,13 +87,13 @@ python check_setup.py
 
 Esto verificará:
 - ✓ Dependencias instaladas
-- ✓ Modelos MediaPipe descargados
+- ✓ Modelos MediaPipe descargados (ver [MODELS_SETUP.md](comsigns/MODELS_SETUP.md))
 - ✓ Configuración correcta
 
 ### 4. Instalar Dependencias Frontend
 
 ```bash
-cd web
+cd comsigns/web
 npm install
 ```
 
@@ -84,7 +103,7 @@ npm install
 
 ### Archivo `config.yaml`
 
-Ubicación: `/home/srchaoz/ChaozDev/COMSIGNS-MULTIMODAL/comsigns/config.yaml`
+Ubicación: `comsigns/config.yaml`
 
 ```yaml
 # API Configuration
@@ -123,6 +142,9 @@ models:
   translator: "models/translator_seq2seq.pth"
 ```
 
+> [!TIP]
+> Consulta el [Módulo de Entrenamiento](docs/TRAINING.md) para aprender a entrenar modelos.
+
 ---
 
 ## 🚀 Iniciar el Sistema
@@ -131,11 +153,11 @@ models:
 
 ```bash
 # Terminal 1: Backend
-cd /home/srchaoz/ChaozDev/COMSIGNS-MULTIMODAL/comsigns
+cd comsigns
 python run_api.py
 
 # Terminal 2: Frontend
-cd /home/srchaoz/ChaozDev/COMSIGNS-MULTIMODAL/comsigns/web
+cd comsigns/web
 npm run dev
 ```
 
@@ -144,7 +166,7 @@ npm run dev
 #### Backend
 
 ```bash
-cd /home/srchaoz/ChaozDev/COMSIGNS-MULTIMODAL/comsigns
+cd comsigns
 
 # Activar entorno virtual
 source venv/bin/activate
@@ -160,7 +182,7 @@ python run_api.py
 #### Frontend
 
 ```bash
-cd /home/srchaoz/ChaozDev/COMSIGNS-MULTIMODAL/comsigns/web
+cd comsigns/web
 
 # Iniciar servidor de desarrollo
 npm run dev
@@ -169,6 +191,9 @@ npm run dev
 **Verificar que funciona:**
 - Abrir: `http://localhost:5173`
 - Deberías ver la interfaz de COMSIGNS
+
+> [!NOTE]
+> Para más detalles sobre la inferencia web, consulta [WEB_INFERENCE.md](comsigns/docs/WEB_INFERENCE.md).
 
 ---
 
@@ -195,14 +220,43 @@ npm run dev
 
 ---
 
+## 📊 Flujo de Datos Completo
+
+```
+Usuario → Webcam
+    ↓
+Frame (base64) → WebSocket
+    ↓
+Backend: decode_base64_frame()
+    ↓
+MediaPipe: extract_keypoints()           → ver MODELS_SETUP.md
+    ↓
+Encoder: keypoints → embeddings (T × 512) → ver MODEL_ARCHITECTURE.md
+    ↓
+Glosador: embeddings → glosa + confianza
+    ↓
+Traductor: glosa → texto español
+    ↓
+TextAccumulator: acumular con contexto
+    ↓
+WebSocket → Frontend
+    ↓
+RealtimeResult: mostrar traducción
+```
+
+> [!TIP]
+> Para detalles sobre la arquitectura del encoder y shapes, consulta [MODEL_ARCHITECTURE.md](docs/MODEL_ARCHITECTURE.md).
+
+---
+
 ## 🔍 Estado Actual del Sistema
 
 ### ✅ Completamente Funcional
 
-- [x] Backend API con FastAPI
+- [x] Backend API con FastAPI — ver [api/README.md](comsigns/services/api/README.md)
 - [x] Endpoint WebSocket `/ws/infer`
-- [x] Procesamiento de frames con MediaPipe
-- [x] Encoder multimodal (placeholder funcional)
+- [x] Procesamiento de frames con MediaPipe — ver [preprocessing/README.md](comsigns/services/preprocessing/README.md)
+- [x] Encoder multimodal — ver [encoder/README.md](comsigns/services/encoder/README.md)
 - [x] Frontend React con modo cámara
 - [x] Comunicación bidireccional en tiempo real
 - [x] Acumulación de texto con contexto
@@ -219,39 +273,13 @@ Actualmente, el sistema usa **modelos placeholder** que funcionan pero retornan 
 
 Cuando tengas tus modelos entrenados:
 
-1. **Entrenar modelos** (ver `GUIA_MODELOS.md`)
+1. **Entrenar modelos** — ver [TRAINING.md](docs/TRAINING.md)
 2. **Guardar checkpoints** en formato `.pth`
 3. **Actualizar** `config.yaml` con rutas
 4. **Reemplazar clases** en:
    - `services/glosador/__init__.py`
    - `services/translator/__init__.py`
 5. **Reiniciar** el servidor
-
----
-
-## 📊 Flujo de Datos Completo
-
-```
-Usuario → Webcam
-    ↓
-Frame (base64) → WebSocket
-    ↓
-Backend: decode_base64_frame()
-    ↓
-MediaPipe: extract_keypoints()
-    ↓
-Encoder: keypoints → embeddings (T × 512)
-    ↓
-Glosador: embeddings → glosa + confianza
-    ↓
-Traductor: glosa → texto español
-    ↓
-TextAccumulator: acumular con contexto
-    ↓
-WebSocket → Frontend
-    ↓
-RealtimeResult: mostrar traducción
-```
 
 ---
 
@@ -303,16 +331,16 @@ wscat -c ws://localhost:8000/ws/infer
 
 **Solución:**
 ```bash
-cd /home/srchaoz/ChaozDev/COMSIGNS-MULTIMODAL
+cd <raíz del proyecto>
 export PYTHONPATH="${PYTHONPATH}:$(pwd)"
 python comsigns/run_api.py
 ```
 
 ### Problema: "MediaPipe models not found"
 
-**Solución:**
+**Solución:** Ver [MODELS_SETUP.md](comsigns/MODELS_SETUP.md) para instrucciones detalladas.
 ```bash
-cd /home/srchaoz/ChaozDev/COMSIGNS-MULTIMODAL/comsigns
+cd comsigns
 python scripts/download_mediapipe_models.py
 ```
 
@@ -344,6 +372,9 @@ kill -9 <PID>
 2. Usar HTTPS en producción (o localhost en desarrollo)
 3. Cerrar otras aplicaciones usando la cámara
 4. Probar con otro navegador
+
+> [!NOTE]
+> Para más troubleshooting, consulta la [Guía de Usuario](docs/USER_GUIDE.md#problemas-comunes-y-soluciones).
 
 ---
 
@@ -434,10 +465,16 @@ app.add_middleware(
 
 ## 📚 Documentación Adicional
 
-- **Guía de Modelos**: `GUIA_MODELOS.md` - Cómo reemplazar modelos placeholder
-- **Walkthrough**: Ver artifacts - Detalles de implementación
-- **README Frontend**: `web/README.md` - Documentación del frontend
-- **API Docs**: `http://localhost:8000/docs` - Documentación interactiva
+| Documento | Descripción |
+|-----------|-------------|
+| [🧠 Arquitectura del Modelo](docs/MODEL_ARCHITECTURE.md) | Encoder, ramas, fusión, clasificador |
+| [📘 Documentación Técnica](docs/MODEL_TECHNICAL.md) | I/O, inferencia, limitaciones |
+| [🏋️ Entrenamiento](docs/TRAINING.md) | Trainer, checkpointing, métricas |
+| [🏗️ Arquitectura General](comsigns/docs/ARCHITECTURE.md) | Pipeline + dataset + resultados |
+| [🌐 Inferencia Web](comsigns/docs/WEB_INFERENCE.md) | API REST + Frontend |
+| [📜 Referencia de Scripts](comsigns/docs/SCRIPTS_USAGE.md) | CLI flags |
+| [⚙️ Servicios](services/SERVICES_TECH_DOC.md) | Docs técnicos de servicios |
+| **API Docs Interactiva** | `http://localhost:8000/docs` |
 
 ---
 
@@ -445,10 +482,10 @@ app.add_middleware(
 
 ### Para Desarrollo
 
-1. **Entrenar modelos reales**:
+1. **Entrenar modelos reales** — ver [TRAINING.md](docs/TRAINING.md):
    - Glosador con CTC o Transformer
    - Traductor con Seq2Seq o mT5
-   
+
 2. **Optimizar rendimiento**:
    - Usar ONNX Runtime
    - Implementar caché de predicciones
@@ -473,7 +510,7 @@ app.add_middleware(
 
 - [ ] Instalar dependencias Python
 - [ ] Instalar dependencias Node.js
-- [ ] Verificar modelos MediaPipe
+- [ ] Verificar modelos MediaPipe — ver [MODELS_SETUP.md](comsigns/MODELS_SETUP.md)
 - [ ] Configurar `config.yaml`
 - [ ] Iniciar backend (`python run_api.py`)
 - [ ] Iniciar frontend (`npm run dev`)
@@ -490,20 +527,19 @@ Si encuentras problemas:
 
 1. **Revisar logs** del backend y frontend
 2. **Verificar** `check_setup.py`
-3. **Consultar** documentación en `GUIA_MODELOS.md`
-4. **Revisar** issues conocidos en este documento
+3. **Consultar** la [Guía de Usuario](docs/USER_GUIDE.md)
+4. **Revisar** la sección de [Solución de Problemas](#-solución-de-problemas) en este documento
 
 ---
 
 **¡El sistema está listo para usar! 🎉**
 
-Para empezar ahora mismo:
 ```bash
 # Terminal 1
-cd /home/srchaoz/ChaozDev/COMSIGNS-MULTIMODAL/comsigns && python run_api.py
+cd comsigns && python run_api.py
 
 # Terminal 2
-cd /home/srchaoz/ChaozDev/COMSIGNS-MULTIMODAL/comsigns/web && npm run dev
+cd comsigns/web && npm run dev
 ```
 
 Luego abre `http://localhost:5173` y haz clic en "🎥 Cámara en Vivo"

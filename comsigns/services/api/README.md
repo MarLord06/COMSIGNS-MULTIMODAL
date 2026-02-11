@@ -1,6 +1,19 @@
-# API FastAPI
+# 🌐 API FastAPI
 
-API REST para inferencia de video en tiempo real.
+> API REST para inferencia de video en tiempo real.
+
+---
+
+## 📖 Ver También
+
+| Documento | Descripción |
+|-----------|-------------|
+| [🌐 Inferencia Web](../../docs/WEB_INFERENCE.md) | Guía completa API + Frontend |
+| [⚙️ Servicios](../../../services/SERVICES_TECH_DOC.md) | Docs técnicos detallados |
+| [🧠 Arquitectura del Modelo](../../../docs/MODEL_ARCHITECTURE.md) | Encoder y clasificador |
+| [📜 Scripts](../../docs/SCRIPTS_USAGE.md) | CLI de inferencia alternativa |
+
+---
 
 ## Endpoints
 
@@ -34,6 +47,8 @@ Procesa un video y retorna embeddings.
 }
 ```
 
+---
+
 ## Uso
 
 ### Ejecutar servidor
@@ -48,6 +63,8 @@ uvicorn comsigns.services.api.main:app --reload
 docker-compose up api
 ```
 
+---
+
 ## Configuración
 
 Editar `config.yaml`:
@@ -60,3 +77,9 @@ api:
   timeout: 300  # segundos
 ```
 
+---
+
+## 📚 Docs Relacionados
+
+- [🌐 Inferencia Web](../../docs/WEB_INFERENCE.md) — Guía completa
+- [⚙️ Servicios](../../../services/SERVICES_TECH_DOC.md) — Docs técnicos

@@ -1,4 +1,20 @@
-# Guía de Inicio Rápido - COMSIGNS
+# 🚀 Guía de Inicio Rápido — COMSIGNS
+
+> Setup mínimo para empezar a usar el sistema.
+
+---
+
+## 📖 Navegación
+
+| Documento | Descripción |
+|-----------|-------------|
+| [📋 Guía Completa](../INICIO.md) | Guía detallada con todos los pasos |
+| [🧠 Arquitectura del Modelo](../docs/MODEL_ARCHITECTURE.md) | Encoder multimodal y clasificador |
+| [🔧 Setup MediaPipe](MODELS_SETUP.md) | Descarga de modelos MediaPipe |
+| [📜 Referencia de Scripts](docs/SCRIPTS_USAGE.md) | CLI flags y uso |
+| [🏗️ Arquitectura General](docs/ARCHITECTURE.md) | Pipeline + dataset + resultados |
+
+---
 
 ## Instalación
 
@@ -14,6 +30,8 @@ pip install -r requirements.txt
 make setup
 ```
 
+---
+
 ## Uso Básico
 
 ### 1. Procesar un video
@@ -24,6 +42,9 @@ from comsigns.services.preprocessing import process_video_clip
 feature_clip = process_video_clip("video.mp4", fps=30.0)
 print(f"Frames procesados: {len(feature_clip.frames)}")
 ```
+
+> [!TIP]
+> Ver [preprocessing/README.md](services/preprocessing/README.md) para más opciones.
 
 ### 2. Usar el encoder
 
@@ -42,7 +63,10 @@ with torch.no_grad():
     )
 ```
 
-### 3. Instalar el paquete (importante)
+> [!TIP]
+> Ver [encoder/README.md](services/encoder/README.md) para configuración y [MODEL_ARCHITECTURE.md](../docs/MODEL_ARCHITECTURE.md) para entender la arquitectura.
+
+### 3. Instalar el paquete
 
 ```bash
 # Desde el directorio comsigns
@@ -62,6 +86,9 @@ make run-api
 python3 -m uvicorn comsigns.services.api.main:app --reload
 ```
 
+> [!TIP]
+> Ver [api/README.md](services/api/README.md) para endpoints disponibles.
+
 ### 5. Ejecutar la UI Web
 
 ```bash
@@ -72,6 +99,11 @@ npm run dev
 
 Luego abrir `http://localhost:3000`
 
+> [!NOTE]
+> Ver [WEB_INFERENCE.md](docs/WEB_INFERENCE.md) para detalles de la inferencia web.
+
+---
+
 ## Tests
 
 ```bash
@@ -81,6 +113,8 @@ make test
 # Con cobertura
 make test-cov
 ```
+
+---
 
 ## Docker
 
@@ -95,32 +129,39 @@ make docker-up
 make docker-down
 ```
 
+---
+
 ## Estructura del Proyecto
 
 ```
 comsigns/
-├── services/          # Módulos principales
-│   ├── ingestion/     # Captura de video
+├── services/           # Módulos principales
+│   ├── ingestion/      # Captura de video
 │   ├── preprocessing/  # Extracción de keypoints
 │   ├── encoder/        # Encoder multimodal
 │   └── api/            # API FastAPI
-├── web/                # Interfaz React
+├── training/           # Entrenamiento y clasificador
+├── scripts/            # Scripts CLI
 ├── tests/              # Tests unitarios
-└── examples/           # Ejemplos de uso
+└── experiments/        # Checkpoints y resultados
 ```
+
+---
 
 ## Próximos Pasos
 
-1. **Glosador**: Implementar módulo para convertir embeddings → glosas
-2. **Translator**: Implementar traducción de glosas → español
-3. **Feature Store**: Sistema de almacenamiento de features
-4. **Entrenamiento**: Scripts para entrenar modelos
+1. **Glosador** — Implementar módulo embeddings → glosas
+2. **Translator** — Implementar traducción glosas → español
+3. **Feature Store** — Sistema de almacenamiento de features
+4. **Entrenamiento** — Scripts para entrenar modelos · ver [TRAINING.md](../docs/TRAINING.md)
 
-## Documentación
+---
 
-Ver README.md en cada módulo para más detalles:
-- `services/ingestion/README.md`
-- `services/preprocessing/README.md`
-- `services/encoder/README.md`
-- `services/api/README.md`
+## 📚 Documentación por Servicio
 
+| Servicio | README |
+|----------|--------|
+| Ingestion | [services/ingestion/README.md](services/ingestion/README.md) |
+| Preprocessing | [services/preprocessing/README.md](services/preprocessing/README.md) |
+| Encoder | [services/encoder/README.md](services/encoder/README.md) |
+| API | [services/api/README.md](services/api/README.md) |

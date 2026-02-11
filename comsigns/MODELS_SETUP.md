@@ -1,33 +1,50 @@
-# Configuración de Modelos de MediaPipe
+# 🔧 Configuración de Modelos de MediaPipe
+
+> Descarga y configuración de los modelos MediaPipe Tasks necesarios para la extracción de keypoints.
+
+---
+
+## 📖 Navegación
+
+| Documento | Descripción |
+|-----------|-------------|
+| [🚀 Inicio Rápido](QUICKSTART.md) | Setup mínimo |
+| [👤 Guía de Usuario](../docs/USER_GUIDE.md) | Instalación completa y troubleshooting |
+| [📋 Guía Completa](../INICIO.md) | Todos los pasos detallados |
+| [🧠 Arquitectura del Modelo](../docs/MODEL_ARCHITECTURE.md) | Cómo se usan los keypoints en el encoder |
+
+---
 
 MediaPipe Tasks requiere modelos específicos (archivos `.task`) para funcionar. Estos modelos se descargan automáticamente la primera vez, pero si hay problemas de conexión, puedes descargarlos manualmente.
 
-## Opción 1: Descarga Automática (Recomendado)
+## Opción 1: Descarga Automática (Recomendado) ✅
 
 Los modelos se descargarán automáticamente la primera vez que uses el sistema. Si falla, verifica tu conexión a internet.
 
 ## Opción 2: Descarga Manual con Script
 
-Ejecuta el script de descarga:
-
 ```bash
 python3 scripts/download_mediapipe_models.py
 ```
 
-Este script intentará descargar los modelos desde múltiples URLs y los guardará en `models/mediapipe/`.
+Este script descargará los modelos desde múltiples URLs y los guardará en `models/mediapipe/`.
 
 ## Opción 3: Descarga Manual desde el Navegador
 
 1. Visita: https://developers.google.com/mediapipe/solutions/vision
 2. Descarga los siguientes modelos:
-   - `hand_landmarker.task`
-   - `pose_landmarker.task`
-   - `face_landmarker.task`
-3. Colócalos en: `comsigns/models/mediapipe/`
 
-## Opción 4: Especificar Rutas Personalizadas
+| Modelo | Uso | Keypoints |
+|--------|-----|-----------|
+| `hand_landmarker.task` | Detección de manos | 21 keypoints × 2 manos |
+| `pose_landmarker.task` | Pose corporal | 33 keypoints |
+| `face_landmarker.task` | Landmarks faciales | 468 keypoints |
 
-Si tienes los modelos en otra ubicación, puedes especificarlos en el código:
+3. Colócalos en: `models/mediapipe/`
+
+## Opción 4: Rutas Personalizadas
+
+Si tienes los modelos en otra ubicación:
 
 ```python
 from comsigns.services.preprocessing import KeypointExtractor
@@ -39,9 +56,12 @@ extractor = KeypointExtractor(model_paths={
 })
 ```
 
-## Verificar Instalación
+> [!TIP]
+> Ver [preprocessing/README.md](services/preprocessing/README.md) para más opciones del extractor.
 
-Para verificar que los modelos están correctamente instalados:
+---
+
+## Verificar Instalación
 
 ```bash
 ls -lh models/mediapipe/
@@ -49,3 +69,11 @@ ls -lh models/mediapipe/
 
 Deberías ver los 3 archivos `.task` listados.
 
+---
+
+## 📚 Documentos Relacionados
+
+- [🧠 Arquitectura del Modelo](../docs/MODEL_ARCHITECTURE.md) — Cómo se procesan los keypoints
+- [📘 Documentación Técnica](../docs/MODEL_TECHNICAL.md) — Formato de entradas esperado
+- [🚀 Inicio Rápido](QUICKSTART.md) — Setup mínimo
+- [📋 Guía Completa](../INICIO.md) — Todos los pasos

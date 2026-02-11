@@ -1,6 +1,20 @@
-# Módulo de Preprocessing
+# 🔧 Módulo de Preprocessing
 
-Módulo para extracción de keypoints usando MediaPipe.
+> Extracción de keypoints usando MediaPipe para manos, cuerpo y rostro.
+
+---
+
+## 📖 Ver También
+
+| Documento | Descripción |
+|-----------|-------------|
+| [🔧 Setup MediaPipe](../../MODELS_SETUP.md) | Descarga de modelos `.task` |
+| [🧠 Arquitectura del Modelo](../../../docs/MODEL_ARCHITECTURE.md) | Cómo se usan los keypoints en el encoder |
+| [⚙️ Servicios](../../../services/SERVICES_TECH_DOC.md) | Docs técnicos detallados |
+| [📹 Ingestion](../ingestion/README.md) | Paso anterior: captura de video |
+| [🧠 Encoder](../encoder/README.md) | Paso siguiente: encoder multimodal |
+
+---
 
 ## Uso
 
@@ -26,13 +40,19 @@ extractor = KeypointExtractor()
 feature_clip = extractor.extract_from_video("video.mp4", fps=30.0)
 ```
 
+---
+
 ## Funcionalidades
 
-- Extracción de keypoints de manos (21 puntos por mano, hasta 2 manos)
-- Extracción de keypoints del cuerpo (33 puntos)
-- Extracción de keypoints del rostro (468 puntos)
-- Normalización de keypoints (relativa o absoluta)
-- Guardado en formato JSON o Parquet
+| Funcionalidad | Detalle |
+|---------------|---------|
+| Manos | 21 keypoints por mano, hasta 2 manos |
+| Cuerpo | 33 keypoints |
+| Rostro | 468 keypoints |
+| Normalización | Relativa o absoluta |
+| Formatos de salida | JSON o Parquet |
+
+---
 
 ## MediaPipe
 
@@ -41,3 +61,14 @@ Este módulo utiliza:
 - `mediapipe.solutions.pose` para detección de pose corporal
 - `mediapipe.solutions.face_mesh` para detección facial
 
+> [!TIP]
+> Si los modelos no se descargan automáticamente, ver [MODELS_SETUP.md](../../MODELS_SETUP.md).
+
+---
+
+## 📚 Docs Relacionados
+
+- [🔧 Setup MediaPipe](../../MODELS_SETUP.md) — Descarga de modelos
+- [🧠 Arquitectura](../../../docs/MODEL_ARCHITECTURE.md) — Shapes y diagramas
+- [📹 Ingestion](../ingestion/README.md) — Paso anterior
+- [🧠 Encoder](../encoder/README.md) — Paso siguiente

@@ -1,116 +1,122 @@
-# Documentación Técnica de la Carpeta `services`
+# ⚙️ Documentación Técnica — Carpeta `services`
 
-La carpeta `services` contiene la implementación runtime de los pipelines multimodales del proyecto: extracción y preprocesado de keypoints, conversión a tensores, encoder multimodal, carga de checkpoints y APIs de inferencia/streaming.
-
-Este documento reemplaza la descripción superficial con una guía técnica accionable: lista de módulos reales, APIs públicas, snippets de código relevantes, flujos de datos (entrada → salida), configuraciones clave y puntos de fallo conocidos.
-
-**Archivos / módulos inspeccionados**
-- `comsigns/services/preprocessing/extract_keypoints.py` — extracción MediaPipe
-- `comsigns/services/preprocessing/process_clip.py` — normalización y guardado
-- `comsigns/services/encoder/model.py` — implementa `MultimodalEncoder` y ramas
-- `comsigns/services/encoder/utils.py` — conversión `FeatureClip` → tensores
-- `comsigns/services/inference/loader.py` — carga de checkpoints y mapeos de clases
-- `comsigns/services/inference/predictor.py` — wrapper de inferencia y postprocesado
-- `comsigns/services/api/main.py` — API FastAPI (endpoints REST + WebSocket)
-- `comsigns/services/schemas.py` — Pydantic schemas y contratos de datos
-
-**Cómo leer este documento**
-- Cada sección incluye: propósito, API pública (clases/funciones), snippet representativo y ejemplos de uso.
-- Los snippets están extraídos del código real en la carpeta `comsigns/services`.
+> Guía técnica de los módulos runtime: preprocessing, encoder, inference y API.
 
 ---
 
-**1) Preprocessing — extracción de keypoints (MediaPipe)**
+## 📖 Navegación
 
-- Propósito: leer frames (imagen/archivo), ejecutar MediaPipe Tasks (hands, pose, face) y devolver un `FeatureClip` validado para downstream.
-- Principal clase: `KeypointExtractor`
-- API pública relevante:
-	- `KeypointExtractor.__init__(model_paths: Optional[Dict[str,str]] = None)` — inicializa landmarkers.
-	- `extract_from_frame(frame: np.ndarray, timestamp_ms: int = 0) -> FrameKeypoints`
-	- `extract_from_video(video_path: str, fps: Optional[float] = None) -> FeatureClip`
+| Documento | Descripción |
+|-----------|-------------|
+| [🧠 Arquitectura del Modelo](../docs/MODEL_ARCHITECTURE.md) | Encoder multimodal y clasificador |
+| [📘 Documentación Técnica](../docs/MODEL_TECHNICAL.md) | I/O, inferencia, limitaciones |
+| [🏋️ Entrenamiento](../docs/TRAINING.md) | Trainer, métricas, checkpointing |
+| [🏗️ Arquitectura General](../comsigns/docs/ARCHITECTURE.md) | Pipeline + dataset + resultados |
+| [🌐 Inferencia Web](../comsigns/docs/WEB_INFERENCE.md) | API REST + Frontend |
 
-Snippet (extracción de mano / cuerpo / rostro, truncado):
+### READMEs de Servicios
+
+| Servicio | README |
+|----------|--------|
+| API | [api/README.md](../comsigns/services/api/README.md) |
+| Encoder | [encoder/README.md](../comsigns/services/encoder/README.md) |
+| Ingestion | [ingestion/README.md](../comsigns/services/ingestion/README.md) |
+| Preprocessing | [preprocessing/README.md](../comsigns/services/preprocessing/README.md) |
+
+---
+
+## Módulos Inspeccionados
+
+| Archivo | Propósito |
+|---------|-----------|
+| `services/preprocessing/extract_keypoints.py` | Extracción MediaPipe |
+| `services/preprocessing/process_clip.py` | Normalización y guardado |
+| `services/encoder/model.py` | `MultimodalEncoder` y ramas |
+| `services/encoder/utils.py` | Conversión `FeatureClip` → tensores |
+| `services/inference/loader.py` | Carga de checkpoints y mapeos |
+| `services/inference/predictor.py` | Wrapper de inferencia y postprocesado |
+| `services/api/main.py` | API FastAPI (REST + WebSocket) |
+| `services/schemas.py` | Pydantic schemas y contratos |
+
+---
+
+## 1. Preprocessing — Extracción de Keypoints (MediaPipe)
+
+**Clase principal:** `KeypointExtractor`
+
+### API Pública
+
+```python
+KeypointExtractor.__init__(model_paths: Optional[Dict[str,str]] = None)
+extract_from_frame(frame: np.ndarray, timestamp_ms: int = 0) -> FrameKeypoints
+extract_from_video(video_path: str, fps: Optional[float] = None) -> FeatureClip
+```
+
+### Snippet
 
 ```python
 def _extract_hand_keypoints(self, mp_image, timestamp_ms: int) -> List[List[float]]:
-		if hasattr(self.hand_landmarker, 'detect_for_video'):
-				res = self.hand_landmarker.detect_for_video(mp_image, timestamp_ms)
-		else:
-				res = self.hand_landmarker.detect(mp_image)
-
-		keypoints = []
-		if res.hand_landmarks:
-				for hand_landmarks in res.hand_landmarks:
-						for landmark in hand_landmarks:
-								keypoints.append([landmark.x, landmark.y, landmark.z])
-		return keypoints
+    if hasattr(self.hand_landmarker, 'detect_for_video'):
+        res = self.hand_landmarker.detect_for_video(mp_image, timestamp_ms)
+    else:
+        res = self.hand_landmarker.detect(mp_image)
+    keypoints = []
+    if res.hand_landmarks:
+        for hand_landmarks in res.hand_landmarks:
+            for landmark in hand_landmarks:
+                keypoints.append([landmark.x, landmark.y, landmark.z])
+    return keypoints
 ```
 
-Notas técnicas y recomendaciones:
-- Los landmarks devueltos están normalizados en [0,1] (x,y) y z es relativo; el extractor NO incluye un canal de confidence en la entrada a los modelos (se descarta para el encoder).
-- `KeypointExtractor` intenta descargar modelos de MediaPipe si no se proporcionan rutas; en entornos sin internet conviene montar los `*.task` en `models/mediapipe`.
-- Modo `VIDEO` vs `IMAGE`: `running_mode` depende de `preprocessing.mediapipe.static_image_mode` en la config.
+> [!NOTE]
+> Los landmarks están normalizados [0,1] (x,y), z es relativo. El extractor NO incluye canal de confidence.
+
+**Setup:** [MODELS_SETUP.md](../comsigns/MODELS_SETUP.md)
 
 ---
 
-**2) Preprocessing — normalización y guardado**
+## 2. Preprocessing — Normalización y Guardado
 
-- Propósito: normalizar keypoints por frame y almacenar en `json` o `parquet`.
-- Funciones clave:
-	- `normalize_keypoints(keypoints, method='relative'|'absolute')`
-	- `process_video_clip(video_path, output_path=None, fps=None, normalize=True, format='json') -> FeatureClip`
-
-Snippet (normalización relativa/absoluta):
+### API Pública
 
 ```python
-def normalize_keypoints(keypoints, method='relative'):
-		if method == 'relative':
-				# clamp x,y a [0,1] y devolver [x,y,z,confidence]
-				return [[max(0, min(1, kp[0])), max(0, min(1, kp[1])), kp[2] if len(kp)>2 else 0.0, kp[3] if len(kp)>3 else 1.0] for kp in keypoints]
-		elif method == 'absolute':
-				# centrar en el centroide y escalar por la distancia máxima
-				...
+normalize_keypoints(keypoints, method='relative'|'absolute')
+process_video_clip(video_path, output_path=None, fps=None, normalize=True, format='json') -> FeatureClip
 ```
 
-Consideraciones:
-- `process_video_clip` delega en `KeypointExtractor` y luego aplica `normalize_keypoints` por frame.
-- Output: `FeatureClip.to_dict()` cuando se guarda a JSON; para Parquet se convierte a un DataFrame por frame.
+Output: `FeatureClip.to_dict()` para JSON; DataFrame por frame para Parquet.
 
 ---
 
-**3) Schemas — contrato de datos (Pydantic)**
+## 3. Schemas — Contrato de Datos (Pydantic)
 
-- Archivos: `comsigns/services/schemas.py`
-- Objetos principales:
-	- `Keypoint` : validación de x,y en [0,1], z opcional y `confidence` [0,1]
-	- `FrameKeypoints` : `t`, `hand_keypoints`, `body_keypoints`, `face_keypoints`
-	- `FeatureClip` : `clip_id`, `fps`, `frames: List[FrameKeypoints]`, `meta`
+### Objetos Principales
 
-Snippet (validador de frames ordenados):
+| Schema | Descripción |
+|--------|-------------|
+| `Keypoint` | Validación x,y ∈ [0,1], z opcional, `confidence` ∈ [0,1] |
+| `FrameKeypoints` | `t`, `hand_keypoints`, `body_keypoints`, `face_keypoints` |
+| `FeatureClip` | `clip_id`, `fps`, `frames: List[FrameKeypoints]`, `meta` |
+
+> [!IMPORTANT]
+> Los servicios asumen que `FeatureClip.frames` tiene al menos 1 frame. Si produce 0, manejar como error upstream.
+
+---
+
+## 4. Encoder — `MultimodalEncoder`
+
+**Archivo:** [`comsigns/services/encoder/model.py`](../comsigns/services/encoder/model.py)
+
+### API Pública
 
 ```python
-@field_validator('frames')
-def validate_frames_ordered(cls, v):
-		times = [f.t for f in v]
-		if times != sorted(times):
-				raise ValueError('Los frames deben estar ordenados por tiempo (t)')
-		return v
+MultimodalEncoder.forward(hand_keypoints, body_keypoints, face_keypoints) -> Tensor
+# Output: (batch, seq_len, output_dim)
+
+create_encoder(config_path=None, **kwargs) -> MultimodalEncoder
 ```
 
-Importante:
-- Los servicios asumen que `FeatureClip.frames` tiene al menos 1 frame (`min_length=1`). Si un pipeline produce 0 frames, se debe manejar como error upstream.
-
----
-
-**4) Encoder — `MultimodalEncoder` (arquitectura)**
-
-- Archivo: `comsigns/services/encoder/model.py`
-- Diseño: 3 ramas (`HandBranch`, `BodyBranch`, `FaceBranch`) que producen embeddings de dimensión `hidden_dim` cada una; se concatenan y proyectan a `output_dim`.
-- API pública:
-	- `MultimodalEncoder.forward(hand_keypoints, body_keypoints, face_keypoints) -> Tensor` (batch, seq_len, output_dim)
-	- `create_encoder(config_path=None, **kwargs) -> MultimodalEncoder`
-
-Snippet (forward fusion):
+### Forward (Fusión)
 
 ```python
 hand_emb = self.hand_branch(hand_keypoints)
@@ -121,161 +127,142 @@ output = self.fusion(fused)
 return output
 ```
 
-Puntos técnicos:
-- Las ramas usan LSTM (batch_first=True) y una proyección inicial `Linear` para reducir/expandir dimensiones.
-- `FaceBranch` aplica una reducción inicial debido a la alta dimensionalidad (468*3 = 1404).
-- El encoder espera tensores con forma `(batch, seq_len, input_dim)`. Para inferencia en endpoints que usan clips, el código añade dimensión de batch antes de pasar al encoder.
+**Arquitectura detallada:** [MODEL_ARCHITECTURE.md](../docs/MODEL_ARCHITECTURE.md)
 
 ---
 
-**5) Encoder utils — conversión FeatureClip → tensores**
+## 5. Encoder Utils — FeatureClip → Tensores
 
-- Archivo: `comsigns/services/encoder/utils.py`
-- Funciones clave:
-	- `keypoints_to_tensor(keypoints, expected_size=None, pad_value=0.0) -> torch.Tensor`
-	- `feature_clip_to_tensors(feature_clip) -> Dict['hand','body','face']` (cada tensor es `(seq_len, input_dim)`)
+**Archivo:** `comsigns/services/encoder/utils.py`
 
-Snippet (padding/truncado y empaquetado):
+### API Pública
 
 ```python
-def keypoints_to_tensor(keypoints, expected_size=None, pad_value=0.0):
-		kp_array = np.array(keypoints, dtype=np.float32)
-		# keep only first 3 columns (x,y,z)
-		kp_array = kp_array[:, :3] if kp_array.shape[1] >= 3 else pad_columns(kp_array)
-		kp_flat = kp_array.flatten()
-		if expected_size:
-				if len(kp_flat) < expected_size:
-						kp_flat = np.concatenate([kp_flat, np.full(expected_size - len(kp_flat), pad_value)])
-				else:
-						kp_flat = kp_flat[:expected_size]
-		return torch.from_numpy(kp_flat)
+keypoints_to_tensor(keypoints, expected_size=None, pad_value=0.0) -> torch.Tensor
+feature_clip_to_tensors(feature_clip) -> Dict['hand','body','face']
+# Cada tensor es (seq_len, input_dim)
 ```
 
-Relevancia:
-- Este módulo garantiza que cada frame produce vectores de tamaño fijo: `hand=126`, `body=99`, `face=1404`. El encoder depende de estas formas fijas.
-- Si los keypoints vienen en formato plano (flattened) o con un canal de confidence extra, la función los normaliza/trunca.
+> [!IMPORTANT]
+> Garantiza vectores de tamaño fijo: `hand=126`, `body=99`, `face=1404`. El encoder depende de estas formas.
 
 ---
 
-**6) Inference — carga de checkpoint (`InferenceLoader`) y predictor (`Predictor`)**
+## 6. Inference — Carga de Checkpoint y Predictor
 
-- `InferenceLoader` (archivo `inference/loader.py`) se encarga de:
-	- cargar checkpoint (torch.load),
-	- inferir `num_classes`,
-	- reconstruir arquitectura (`MultimodalEncoder` + `SignLanguageClassifier`) y cargar `state_dict`,
-	- exponer `load_all()` → `(model, class_names, other_class_id)`.
-
-Snippet (reconstrucción y carga):
+### `InferenceLoader`
 
 ```python
 from services.encoder.model import MultimodalEncoder
 from training.classifier import SignLanguageClassifier
+
 encoder = MultimodalEncoder()
 model = SignLanguageClassifier(encoder=encoder, num_classes=num_classes)
 model.load_state_dict(model_state)
 model = model.to(self.device).eval()
 ```
 
-- `Predictor` (archivo `inference/predictor.py`) encapsula:
-	- movimiento de tensores a device,
-	- forward pass (`logits = model(hand, body, face, lengths)`),
-	- softmax → top-k, y empaqueta `PredictionResult`.
-
-Snippet (postprocesado top-k):
+### `Predictor`
 
 ```python
 logits = self.model(hand, body, face, lengths)
 scores = F.softmax(logits.flatten(), dim=0)
 topk_scores, topk_indices = torch.topk(scores, k)
-for rank in range(k):
-		topk_predictions.append(TopKPrediction(rank=rank+1, class_id=topk_indices[rank].item(), score=topk_scores[rank].item()))
 ```
 
-Consideraciones:
-- `Predictor.predict` asume batch size 1 por simplicidad; para batch se usa `predict_batch`.
-- `InferenceLoader.get_num_classes()` intenta inferir `num_classes` desde el `state_dict` si no está explícito en el checkpoint.
+> [!NOTE]
+> `Predictor.predict` asume batch size 1. Para batch: `predict_batch`.
 
 ---
 
-**7) API — `FastAPI` REST + WebSocket**
+## 7. API — FastAPI REST + WebSocket
 
-- Archivo: `comsigns/services/api/main.py`
-- Endpoints importantes:
-	- `POST /infer/video` — recibe un archivo `UploadFile`, ejecuta `process_video_clip`, convierte a tensores con `feature_clip_to_tensors`, pasa por el encoder y devuelve embeddings en JSON.
-	- `WebSocket /ws/infer` — recibe frames base64, decodifica, procesa (usa `process_video_clip` como simplificación), encoda con `encoder`, pasa por `glosador` y `translator`, y envía respuestas en tiempo real.
+**Archivo:** [`comsigns/services/api/main.py`](../comsigns/services/api/main.py)
 
-Flujo simplificado de `/infer/video`:
+### Endpoints
 
-```text
-client -> UploadFile -> save temp -> validate_video() -> process_video_clip() -> feature_clip_to_tensors() -> encoder() -> return embeddings
+| Endpoint | Descripción |
+|----------|-------------|
+| `POST /infer/video` | Recibe video → extrae keypoints → encoder → embeddings |
+| `WebSocket /ws/infer` | Frames base64 en tiempo real → glosador → traductor |
+
+### Flujo de `/infer/video`
+
+```
+client → UploadFile → save temp → validate_video() → process_video_clip() → feature_clip_to_tensors() → encoder() → return embeddings
 ```
 
-Snippet (parte de infer_video):
+> [!WARNING]
+> - **Lazy loading:** Los modelos se cargan la primera vez; manejar concurrencia con múltiples workers.
+> - **WebSocket:** Guarda frames en temp files (simple pero ineficiente para producción).
 
-```python
-tensors = feature_clip_to_tensors(feature_clip)
-hand_t = tensors['hand'].unsqueeze(0)
-body_t = tensors['body'].unsqueeze(0)
-face_t = tensors['face'].unsqueeze(0)
-embeddings = encoder(hand_t, body_t, face_t)
+---
+
+## 8. Flujo de Datos Integrado
+
+```
+Entrada: video (archivo) o frames base64 (WebSocket)
+    ↓
+KeypointExtractor → FeatureClip (Pydantic) → feature_clip_to_tensors → encoder tensors
+    ↓
+MultimodalEncoder → embeddings (batch, seq_len, output_dim)
+    ↓
+SignLanguageClassifier → logits   ─── ó ───   Glosador + Translator → texto
+    ↓
+Predictor → top-k predicciones
 ```
 
-Puntos críticos de producción:
-- Carga perezosa (lazy loading) de modelos (`get_encoder()`): evita costos en arranque, pero hay que manejar concurrencia si múltiples workers intentan cargar a la vez.
-- WebSocket: el ejemplo guarda frames en archivos temporales y reusa `process_video_clip` — eso es simple pero ineficiente. Para producción conviene una ruta de procesamiento de frames en memoria que evite I/O.
+---
+
+## 9. Configuraciones Relevantes
+
+| Key | Uso |
+|-----|-----|
+| `preprocessing.mediapipe.min_detection_confidence` | Umbral de detección |
+| `preprocessing.mediapipe.static_image_mode` | Modo VIDEO vs IMAGE |
+| `encoder.hidden_dim`, `encoder.output_dim` | Dimensiones del encoder |
+| `api.host`, `api.port` | Configuración de uvicorn |
 
 ---
 
-**8) Integración y flujo de datos**
+## 10. Errores Comunes y Mitigaciones
 
-- Entrada esperada: video (archivo) o frames base64 (WebSocket).
-- Preprocesado: `KeypointExtractor` → `FeatureClip` (Pydantic) → `feature_clip_to_tensors` → encoder tensors.
-- Modelo: `MultimodalEncoder` produce secuencia de embeddings `(batch, seq_len, output_dim)` → (opcional) `SignLanguageClassifier` produce logits.
-- Post-procesado: `Predictor` para clasificación (top-k) o `Glosador` + `Translator` para pipelines de glosa → texto.
-
----
-
-**9) Configuraciones relevantes (keys observadas en código)**
-
-- `preprocessing.mediapipe`: `min_detection_confidence`, `min_tracking_confidence`, `static_image_mode`
-- `preprocessing.output_dir`: directorio de salida por defecto para features
-- `encoder.hidden_dim`, `encoder.output_dim`, `encoder.num_layers`, `encoder.dropout`
-- `api.host`, `api.port` (usado por `uvicorn.run`)
+| Error | Mitigación |
+|-------|------------|
+| MediaPipe no instalado / modelos faltantes | Añadir `*.task` en `models/mediapipe` — ver [MODELS_SETUP.md](../comsigns/MODELS_SETUP.md) |
+| `FeatureClip` vacío (0 frames) | Validar antes de proseguir (HTTP 500) |
+| Desajuste de dimensiones (126/99/1404) | `keypoints_to_tensor` pad/trunca; mejor asegurar extracción completa |
+| Carga concurrente de modelos | Usar bloqueo o cargar en proceso maestro |
 
 ---
 
-**10) Errores y modos de fallo comunes (y mitigaciones)**
+## 11. Ejemplos Rápidos
 
-- MediaPipe no instalado / modelos no disponibles → `KeypointExtractor.__init__` lanza `ImportError` o `RuntimeError` al no descargar modelos.
-	- Mitigación: añadir modelos `*.task` en `models/mediapipe` o setear `model_paths` al crear `KeypointExtractor`.
-- `FeatureClip` vacío (0 frames) → endpoints devuelven HTTP 500 o error; validar antes de proseguir.
-- Desajuste de dimensiones (esperado 126/99/1404) → `keypoints_to_tensor` pad/trunca, pero truncar puede perder información; mejor asegurar extracción completa.
-- Carga concurrente de modelos en entornos con múltiples workers → usar mecanismo de bloqueo o cargar modelo en proceso maestro y servir vía worker pool.
-
----
-
-**11) Ejemplos de uso rápidos**
-
-- Extraer y guardar features desde un video (CLI interno):
+### Extraer Features
 
 ```python
 from comsigns.services.preprocessing.process_clip import process_video_clip
+
 fc = process_video_clip('video.mp4', format='json')
 print(fc.clip_id, len(fc.frames))
 ```
 
-- Inferencia local con checkpoint:
+### Inferencia con Checkpoint
 
 ```python
 from comsigns.services.inference.loader import load_checkpoint_for_inference
-model, class_names, other_id, info = load_checkpoint_for_inference(Path('experiments/run_001/checkpoints/best.pt'))
+
+model, class_names, other_id, info = load_checkpoint_for_inference(
+    Path('experiments/run_001/checkpoints/best.pt')
+)
 ```
 
 ---
 
-Si quieres, puedo:
-- añadir diagramas (mermaid) del flujo de datos,
-- extraer y añadir más snippets de `glosador`, `translator` o `ingestion` (si los quieres documentados),
-- o generar una versión en inglés.
+## 📚 Documentos Relacionados
 
-Actualicé la lista de tareas: marcaré la extracción de snippets como completada y continuaré con la mejora/validación si me indicas qué módulos profundizar. 
+- [🧠 Arquitectura del Modelo](../docs/MODEL_ARCHITECTURE.md) — Diagramas detallados
+- [📘 Documentación Técnica](../docs/MODEL_TECHNICAL.md) — I/O, inferencia
+- [🏋️ Entrenamiento](../docs/TRAINING.md) — Trainer, métricas
+- [🌐 Inferencia Web](../comsigns/docs/WEB_INFERENCE.md) — API + Frontend
+- [📜 Scripts](../comsigns/docs/SCRIPTS_USAGE.md) — CLI flags

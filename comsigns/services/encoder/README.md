@@ -1,16 +1,36 @@
-# Módulo de Encoder Multimodal
+# 🧠 Módulo de Encoder Multimodal
 
-Encoder PyTorch para procesar keypoints de manos, cuerpo y rostro.
+> Encoder PyTorch para procesar keypoints de manos, cuerpo y rostro.
+
+---
+
+## 📖 Ver También
+
+| Documento | Descripción |
+|-----------|-------------|
+| [🧠 Arquitectura del Modelo](../../../docs/MODEL_ARCHITECTURE.md) | Diagramas detallados del encoder |
+| [🏗️ Arquitectura General](../../docs/ARCHITECTURE.md) | Pipeline completo |
+| [⚙️ Servicios](../../../services/SERVICES_TECH_DOC.md) | Docs técnicos detallados |
+| [📘 Documentación Técnica](../../../docs/MODEL_TECHNICAL.md) | I/O y módulos internos |
+
+---
 
 ## Arquitectura
 
 El encoder consta de tres ramas independientes:
 
-1. **HandBranch**: Procesa keypoints de manos (21 puntos × 2 manos)
-2. **BodyBranch**: Procesa keypoints del cuerpo (33 puntos)
-3. **FaceBranch**: Procesa keypoints del rostro (468 puntos)
+| Rama | Input | Keypoints | Output |
+|------|-------|-----------|--------|
+| **HandBranch** | `(B, T, 126)` | 21 puntos × 2 manos × 3 | `(B, T, 256)` |
+| **BodyBranch** | `(B, T, 99)` | 33 puntos × 3 | `(B, T, 256)` |
+| **FaceBranch** | `(B, T, 1404)` | 468 puntos × 3 | `(B, T, 256)` |
 
-Cada rama utiliza LSTM para procesamiento temporal, y los embeddings se fusionan en un embedding final de dimensión configurable (por defecto 512).
+Cada rama utiliza LSTM para procesamiento temporal. Los embeddings se fusionan en un embedding final de **512 dimensiones**.
+
+> [!TIP]
+> Para diagramas mermaid detallados, ver [MODEL_ARCHITECTURE.md](../../../docs/MODEL_ARCHITECTURE.md).
+
+---
 
 ## Uso
 
@@ -39,6 +59,8 @@ with torch.no_grad():
     )
 ```
 
+---
+
 ## Configuración
 
 Editar `config.yaml`:
@@ -51,3 +73,10 @@ encoder:
   dropout: 0.1
 ```
 
+---
+
+## 📚 Docs Relacionados
+
+- [🧠 Arquitectura del Modelo](../../../docs/MODEL_ARCHITECTURE.md) — Diagramas detallados
+- [🏗️ Arquitectura General](../../docs/ARCHITECTURE.md) — Pipeline + resultados
+- [📘 Técnico](../../../docs/MODEL_TECHNICAL.md) — I/O y módulos

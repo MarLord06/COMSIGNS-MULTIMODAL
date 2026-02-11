@@ -2,21 +2,22 @@
 """
 ComSigns Micro-Vocabulary Training (Phase 1)
 
-Objetivo: Demostrar aprendizaje real con 6 palabras (sin OTHER)
+Objetivo: Demostrar aprendizaje real con 7 palabras (sin OTHER)
 Criterio de éxito: Al menos 2-3 palabras con F1 >= 0.5
 
 Vocabulario V1:
-  - comer (57 train, 15 val) - mano a boca
-  - yo (31 train, 8 val) - señalar a uno mismo
-  - tú (50 train, 13 val) - señalar al otro  
-  - sí (36 train, 9 val) - asentimiento
-  - no (22 train, 6 val) - negación
-  - dos (31 train, 8 val) - configuración de dedos
+    - comer (57 train, 15 val) - mano a boca
+    - yo (31 train, 8 val) - señalar a uno mismo
+    - tú (50 train, 13 val) - señalar al otro
+    - sí (36 train, 9 val) - asentimiento
+    - no (22 train, 6 val) - negación
+    - dos (31 train, 8 val) - configuración de dedos
+    - conflicto (X train, Y val) - etiqueta adicional para ambigüedad/conflicto
 
 Uso:
-    python -m scripts.train_micro --epochs 100 --output-dir experiments/micro_v1
+        python -m scripts.train_micro --epochs 100 --output-dir experiments/micro_v1
 """
-
+    
 import argparse
 import json
 import logging
@@ -61,10 +62,11 @@ MICRO_VOCAB = {
     "sí": 3,
     "no": 4,
     "dos": 5,
+    "conflicto": 6,
 }
-NUM_CLASSES = 6  # Solo 6 palabras, sin OTHER
+NUM_CLASSES = 7  # Ahora 7 palabras incluyendo 'conflicto'
 
-CLASS_NAMES = ["comer", "yo", "tú", "sí", "no", "dos"]
+CLASS_NAMES = ["comer", "yo", "tú", "sí", "no", "dos", "conflicto"]
 
 
 # ============================================================================

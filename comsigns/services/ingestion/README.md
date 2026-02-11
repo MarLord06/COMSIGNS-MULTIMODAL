@@ -1,6 +1,18 @@
-# Módulo de Ingestion
+# 📹 Módulo de Ingestion
 
-Módulo para captura y procesamiento de video desde webcam o archivo.
+> Captura y procesamiento de video desde webcam o archivo.
+
+---
+
+## 📖 Ver También
+
+| Documento | Descripción |
+|-----------|-------------|
+| [🔧 Preprocessing](../preprocessing/README.md) | Extracción de keypoints (siguiente paso del pipeline) |
+| [⚙️ Servicios](../../../services/SERVICES_TECH_DOC.md) | Docs técnicos detallados |
+| [🏗️ Arquitectura General](../../docs/ARCHITECTURE.md) | Pipeline completo |
+
+---
 
 ## Uso
 
@@ -31,6 +43,8 @@ from comsigns.services.ingestion.utils import validate_video
 is_valid, error = validate_video("video.mp4")
 ```
 
+---
+
 ## Funcionalidades
 
 - Captura desde webcam con OpenCV
@@ -39,3 +53,10 @@ is_valid, error = validate_video("video.mp4")
 - Generación de manifests JSON
 - Extracción de frames
 
+---
+
+## 📚 Docs Relacionados
+
+- [🔧 Preprocessing](../preprocessing/README.md) — Siguiente paso: extracción de keypoints
+- [⚙️ Servicios](../../../services/SERVICES_TECH_DOC.md) — Docs técnicos
+- [🏗️ Arquitectura](../../docs/ARCHITECTURE.md) — Pipeline completo
